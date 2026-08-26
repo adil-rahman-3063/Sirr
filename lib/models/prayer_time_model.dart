@@ -1,10 +1,21 @@
-import 'package:flutter/material.dart';
 
 class Prayertime {
   final String readable;
   final String timestamp;
 
   Prayertime({required this.readable, required this.timestamp});
+
+  DateTime dateTime(DateTime baseDate) {
+    try {
+      final cleanTime = readable.split(' ')[0];
+      final parts = cleanTime.split(':');
+      final hour = int.parse(parts[0]);
+      final minute = int.parse(parts[1]);
+      return DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
+    } catch (_) {
+      return baseDate;
+    }
+  }
 
   factory Prayertime.fromJson(Map<String, dynamic> json) {
     return Prayertime(readable: json['readable'], timestamp: json['timestamp']);
@@ -70,6 +81,17 @@ class PrayerTimings {
     required this.sunset,
     required this.hijriDate,
   });
+
+  Map<String, DateTime> toDateTimeMap() {
+    final now = DateTime.now();
+    return {
+      'Fajr': fajr.dateTime(now),
+      'Dhuhr': dhuhr.dateTime(now),
+      'Asr': asr.dateTime(now),
+      'Maghrib': maghrib.dateTime(now),
+      'Isha': isha.dateTime(now),
+    };
+  }
 
   factory PrayerTimings.fromJson(Map<String, dynamic> json) {
     final timings = json['timings'];

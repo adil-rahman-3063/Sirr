@@ -4,15 +4,17 @@ import 'package:intl/intl.dart';
 import '../models/prayer_time_model.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://api.aladhan.com/v1';
+  static const String baseUrl = 'https://api.aladhan.com/v1';
 
   Future<PrayerTimings> getPrayerTimings({
     required String city,
     required String country,
+    DateTime? targetDate,
     int method = 2,
   }) async {
+    final date = DateFormat('dd-MM-yyyy').format(targetDate ?? DateTime.now());
     final Uri url = Uri.parse(
-      '$baseUrl/timingsByCity?city=$city&country=$country&method=$method',
+      '$baseUrl/timingsByCity/$date?city=$city&country=$country&method=$method',
     );
     return _fetchTimings(url);
   }
@@ -20,9 +22,10 @@ class ApiService {
   Future<PrayerTimings> getPrayerTimingsByLocation({
     required double latitude,
     required double longitude,
-    int method = 2,
+    DateTime? targetDate,
+    int method = 3,
   }) async {
-    final date = DateFormat('dd-MM-yyyy').format(DateTime.now());
+    final date = DateFormat('dd-MM-yyyy').format(targetDate ?? DateTime.now());
     final Uri url = Uri.parse(
       '$baseUrl/timings/$date?latitude=$latitude&longitude=$longitude&method=$method',
     );

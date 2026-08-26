@@ -1,8 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:sajda/splash_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:sirr/providers/theme_provider.dart';
+import 'package:sirr/splash_screen.dart';
 
-void main() {
-  runApp(const MyApp());
+import 'package:sirr/services/notification_service.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService().init();
+  await NotificationService().requestPermissions();
+  
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -10,22 +25,15 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Sajda',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5D6651)),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF5D6651),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.system,
-      home: const SplashScreen(),
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        return MaterialApp(
+          title: 'سِرّ',
+          theme: themeProvider.themeData,
+          debugShowCheckedModeBanner: false,
+          home: const SplashScreen(),
+        );
+      },
     );
   }
 }

@@ -1,6 +1,6 @@
-# Sajda: Your Personal Prayer Companion
+# Sirr: Your Personal Prayer Companion
 
-Sajda is a modern, cross-platform prayer tracking and Islamic calendar application built with Flutter. Designed with a sleek glassmorphism UI, it helps Muslims manage their daily prayers, track their spiritual journey, and stay updated with important Hijri dates.
+Sirr is a modern, cross-platform prayer tracking and Islamic calendar application built with Flutter. Designed with a sleek glassmorphism UI, it helps Muslims manage their daily prayers, track their spiritual journey, and stay updated with important Hijri dates.
 
 ## ✨ Features
 
@@ -32,8 +32,8 @@ Sajda is a modern, cross-platform prayer tracking and Islamic calendar applicati
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/adil-rahman-3063/Sajda.git
-    cd sajda
+    git clone https://github.com/adil-rahman-3063/Sirr.git
+    cd sirr
     ```
 
 2.  **Install dependencies:**

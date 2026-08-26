@@ -1,0 +1,166 @@
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Archivo+Black&display=swap">
+<div
+  style="background: #0B0B0B; border-radius: 28px; padding: 20px; max-width: 340px; margin: 0 auto; font-family: 'Space Grotesk', var(--font-sans);">
+  <h2 class="sr-only">Prayer time home screen restyled with Space Grotesk and Archivo Black fonts, showing now praying,
+    a live countdown, next prayer with solar times, and the full prayer list</h2>
+
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+    <i class="ti ti-chevron-left" style="font-size:18px; color:#F2913A" aria-hidden="true"></i>
+    <div style="text-align: center;">
+      <p style="font-size: 14px; font-weight: 500; margin: 0; color: #F5F5F5;">7 Ramadan, 1444</p>
+      <p style="font-size: 11px; color: #7A7A7A; margin: 2px 0 0;">Wed, 29 March 2023</p>
+    </div>
+    <i class="ti ti-chevron-right" style="font-size:18px; color:#F2913A" aria-hidden="true"></i>
+  </div>
+
+  <div
+    style="background: #161616; border-radius: 22px; padding: 20px 18px; margin-bottom: 12px; box-shadow: 0 4px 0 #050505, inset 0 1px 0 rgba(255,255,255,0.04);">
+    <p style="font-size: 12px; font-weight: 700; color: #F2913A; margin: 0 0 6px; letter-spacing: 0.5px;">NOW TIME TO
+      PRAY</p>
+    <p
+      style="font-family: 'Archivo Black', sans-serif; font-size: 44px; margin: 0; line-height: 1; color: #EDEDED; text-shadow: 1px 1px 0 #3a3a3a, 2px 2px 0 #333, 3px 3px 0 #2b2b2b, 4px 4px 0 #232323, 5px 5px 6px rgba(0,0,0,0.6);">
+      DUHUR</p>
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 10px;">
+      <p style="font-size: 22px; font-weight: 700; margin: 0; color: #F5F5F5;">12:27 <span
+          style="font-size: 13px; font-weight: 400; color: #7A7A7A;">pm</span></p>
+      <p style="font-size: 12px; color: #7A7A7A; margin: 0;">ends 3:54pm</p>
+    </div>
+  </div>
+
+  <div
+    style="background: #161616; border-radius: 22px; padding: 18px 16px; margin-bottom: 12px; box-shadow: 0 4px 0 #050505, inset 0 1px 0 rgba(255,255,255,0.04);">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+      <p style="font-size: 12px; font-weight: 700; color: #F2913A; margin: 0; letter-spacing: 0.5px;">TIME UNTIL ASR</p>
+      <p style="font-size: 11px; font-weight: 500; color: #7A7A7A; margin: 0;">3:54 PM</p>
+    </div>
+    <div id="countdown"
+      style="font-family: 'Archivo Black', sans-serif; text-align: center; font-size: 36px; letter-spacing: 1px; line-height: 1; color: #EDEDED; text-shadow: 1px 1px 0 #3a3a3a, 2px 2px 0 #333, 3px 3px 0 #2b2b2b, 4px 4px 0 #232323, 5px 5px 6px rgba(0,0,0,0.6); padding: 6px 0;">
+      00:00:00</div>
+    <div style="margin-top: 14px; height: 5px; background: #232323; border-radius: 4px; overflow: hidden;">
+      <div id="progress-bar" style="height: 100%; width: 0%; background: #F2913A; border-radius: 4px;"></div>
+    </div>
+  </div>
+
+  <div
+    style="background: #161616; border-radius: 22px; padding: 18px; margin-bottom: 12px; box-shadow: 0 4px 0 #050505, inset 0 1px 0 rgba(255,255,255,0.04);">
+    <p style="font-size: 12px; font-weight: 700; color: #F2913A; margin: 0 0 2px; letter-spacing: 0.5px;">NEXT PRAYER
+    </p>
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px;">
+      <p style="font-family: 'Archivo Black', sans-serif; font-size: 22px; margin: 0; color: #EDEDED;">ASR</p>
+      <p style="font-size: 18px; font-weight: 700; margin: 0; color: #F5F5F5;">3:54 <span
+          style="font-size: 12px; font-weight: 400; color: #7A7A7A;">pm</span></p>
+    </div>
+    <div
+      style="border-top: 1px solid #2A2A2A; padding-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); text-align: center;">
+      <div>
+        <i class="ti ti-sunrise" style="font-size: 18px; color: #7A7A7A;" aria-hidden="true"></i>
+        <p style="font-size: 10px; font-weight: 500; color: #7A7A7A; margin: 4px 0 2px; letter-spacing: 0.5px;">SUNRISE
+        </p>
+        <p style="font-size: 13px; font-weight: 700; margin: 0; color: #EDEDED;">6:17 am</p>
+      </div>
+      <div style="border-left: 1px solid #2A2A2A; border-right: 1px solid #2A2A2A;">
+        <i class="ti ti-sun" style="font-size: 18px; color: #7A7A7A;" aria-hidden="true"></i>
+        <p style="font-size: 10px; font-weight: 500; color: #7A7A7A; margin: 4px 0 2px; letter-spacing: 0.5px;">MID DAY
+        </p>
+        <p style="font-size: 13px; font-weight: 700; margin: 0; color: #EDEDED;">12:43 pm</p>
+      </div>
+      <div>
+        <i class="ti ti-sunset-2" style="font-size: 18px; color: #7A7A7A;" aria-hidden="true"></i>
+        <p style="font-size: 10px; font-weight: 500; color: #7A7A7A; margin: 4px 0 2px; letter-spacing: 0.5px;">SUNSET
+        </p>
+        <p style="font-size: 13px; font-weight: 700; margin: 0; color: #EDEDED;">6:52 pm</p>
+      </div>
+    </div>
+  </div>
+
+  <div
+    style="background: #161616; border-radius: 22px; padding: 6px 18px; box-shadow: 0 4px 0 #050505, inset 0 1px 0 rgba(255,255,255,0.04);">
+    <div
+      style="display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid #232323;">
+      <div style="display: flex; align-items: center; gap: 10px;"><i class="ti ti-moon"
+          style="font-size: 17px; color: #7A7A7A;" aria-hidden="true"></i><span
+          style="font-size: 14px; font-weight: 500; color: #C9C9C9;">Fajr</span></div>
+      <div style="display: flex; align-items: center; gap: 8px;"><span
+          style="font-size: 14px; font-weight: 500; color: #C9C9C9;">4:58 am</span><i class="ti ti-bell-off"
+          style="font-size: 15px; color: #565656;" aria-hidden="true"></i></div>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 4px 0; margin: 6px 0;">
+      <div
+        style="background: #F2913A; border-radius: 14px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+        <div style="display: flex; align-items: center; gap: 10px;"><i class="ti ti-sun"
+            style="font-size: 17px; color: #3A1F02;" aria-hidden="true"></i><span
+            style="font-size: 14px; font-weight: 700; color: #3A1F02;">Duhur</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span
+            style="font-size: 14px; font-weight: 700; color: #3A1F02;">12:27 pm</span><i class="ti ti-bell"
+            style="font-size: 15px; color: #3A1F02;" aria-hidden="true"></i></div>
+      </div>
+    </div>
+    <div
+      style="display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid #232323;">
+      <div style="display: flex; align-items: center; gap: 10px;"><i class="ti ti-cloud"
+          style="font-size: 17px; color: #7A7A7A;" aria-hidden="true"></i><span
+          style="font-size: 14px; font-weight: 500; color: #C9C9C9;">Asr</span></div>
+      <div style="display: flex; align-items: center; gap: 8px;"><span
+          style="font-size: 14px; font-weight: 500; color: #C9C9C9;">3:54 pm</span><i class="ti ti-bell"
+          style="font-size: 15px; color: #565656;" aria-hidden="true"></i></div>
+    </div>
+    <div
+      style="display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid #232323;">
+      <div style="display: flex; align-items: center; gap: 10px;"><i class="ti ti-cloud-storm"
+          style="font-size: 17px; color: #7A7A7A;" aria-hidden="true"></i><span
+          style="font-size: 14px; font-weight: 500; color: #C9C9C9;">Maghrib</span></div>
+      <div style="display: flex; align-items: center; gap: 8px;"><span
+          style="font-size: 14px; font-weight: 500; color: #C9C9C9;">6:36 pm</span><i class="ti ti-bell"
+          style="font-size: 15px; color: #565656;" aria-hidden="true"></i></div>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 0;">
+      <div style="display: flex; align-items: center; gap: 10px;"><i class="ti ti-moon-stars"
+          style="font-size: 17px; color: #7A7A7A;" aria-hidden="true"></i><span
+          style="font-size: 14px; font-weight: 500; color: #C9C9C9;">Isha</span></div>
+      <div style="display: flex; align-items: center; gap: 8px;"><span
+          style="font-size: 14px; font-weight: 500; color: #C9C9C9;">8:36 pm</span><i class="ti ti-bell"
+          style="font-size: 15px; color: #565656;" aria-hidden="true"></i></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var target = new Date();
+    target.setHours(15, 54, 0, 0);
+    if (target.getTime() <= new Date().getTime()) {
+      target.setDate(target.getDate() + 1);
+    }
+    var windowStart = new Date(target.getTime() - 24 * 60 * 60 * 1000);
+    var totalWindow = target.getTime() - windowStart.getTime();
+
+    var el = document.getElementById('countdown');
+    var bar = document.getElementById('progress-bar');
+
+    function pad(n) {
+      return String(n).padStart(2, '0');
+    }
+
+    function tick() {
+      var now = new Date().getTime();
+      var diff = target.getTime() - now;
+      if (diff <= 0) {
+        el.textContent = "00:00:00";
+        bar.style.width = "100%";
+        return;
+      }
+      var h = Math.floor(diff / 3600000);
+      var m = Math.floor((diff % 3600000) / 60000);
+      var s = Math.floor((diff % 60000) / 1000);
+      el.textContent = pad(h) + ":" + pad(m) + ":" + pad(s);
+
+      var elapsed = now - windowStart.getTime();
+      var pct = Math.max(0, Math.min(100, (elapsed / totalWindow) * 100));
+      bar.style.width = pct.toFixed(1) + "%";
+    }
+
+    tick();
+    setInterval(tick, 1000);
+  })();
+</script>

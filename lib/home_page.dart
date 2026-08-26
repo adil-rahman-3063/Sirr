@@ -1,4 +1,4 @@
-import 'dart:io' show File; // Minimal import
+import 'dart:async';
 import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:sajda/models/prayer_time_model.dart';
-import 'package:sajda/services/api_service.dart';
-import 'package:sajda/services/database_helper.dart';
-import 'package:sajda/widgets/glass_container.dart';
-import 'package:flutter_heatmap_calendar/flutter_heatmap_calendar.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:sirr/models/prayer_time_model.dart';
+import 'package:sirr/services/api_service.dart';
+import 'package:sirr/providers/theme_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:sirr/services/notification_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,618 +22,851 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  PrayerTimings? _prayerTimings;
+  final Map<String, PrayerTimings> _cache = {};
   bool _isLoading = true;
   String _errorMessage = '';
-  String? _userName;
+  // ignore: unused_field
   String _locationName = 'Mecca, Saudi Arabia';
-  String? _userImagePath;
-  Map<DateTime, int> _heatmapDatasets = {};
-  Map<String, bool> _prayerCompletion = {
-    'Fajr': false,
-    'Dhuhr': false,
-    'Asr': false,
-    'Maghrib': false,
-    'Isha': false,
-  };
+  Position? _currentPosition;
+  
+  late PageController _pageController;
+  final int _initialPage = 10000;
+  int _currentPageIndex = 10000;
+  late Timer _timer;
+  DateTime _now = DateTime.now();
+  late final DateTime _referenceDate;
 
   @override
   void initState() {
     super.initState();
-    _fetchData();
-  }
-
-  Future<void> _fetchData() async {
-    try {
-      final databaseHelper = DatabaseHelper();
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-      // Fetch user profile
-      final userProfile = await databaseHelper.getUserProfile();
-
-      String? cityName;
-      String? countryName;
-
-      // Check Location Permission
-      bool serviceEnabled;
-      LocationPermission permission;
-
-      serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        _errorMessage =
-            'Location services are disabled. Using default location.';
-      } else {
-        permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-          if (permission == LocationPermission.denied) {
-            _errorMessage =
-                'Location permissions are denied. Using default location.';
-          }
-        }
-
-        if (permission == LocationPermission.deniedForever) {
-          _errorMessage =
-              'Location permissions are permanently denied. Using default location.';
-        } else if (permission == LocationPermission.whileInUse ||
-            permission == LocationPermission.always) {
-          try {
-            Position position = await Geolocator.getCurrentPosition();
-
-            // Fetch Prayer Timings immediately with coordinates
-            final timings = await ApiService().getPrayerTimingsByLocation(
-              latitude: position.latitude,
-              longitude: position.longitude,
-            );
-
-            // Attempt to get City Name
-            if (kIsWeb) {
-              // Web Geocoding (OSM)
-              try {
-                final url = Uri.parse(
-                  'https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.latitude}&lon=${position.longitude}&zoom=10',
-                );
-                final response = await http.get(
-                  url,
-                  headers: {'User-Agent': 'SajdaApp'},
-                );
-                if (response.statusCode == 200) {
-                  final data = json.decode(response.body);
-                  final address = data['address'];
-                  cityName =
-                      address['city'] ??
-                      address['town'] ??
-                      address['village'] ??
-                      address['state'];
-                  countryName = address['country'];
+    _referenceDate = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    _pageController = PageController(initialPage: _initialPage);
+    _fetchInitialLocationAndData();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        final newNow = DateTime.now();
+        setState(() {
+          _now = newNow;
+        });
+        
+        // Trigger web notifications if exact minute starts
+        if (newNow.second == 0 && _cache.isNotEmpty) {
+          final todayString = DateFormat('yyyy-MM-dd').format(newNow);
+          final timings = _cache[todayString];
+          if (timings != null) {
+            final prayers = [
+              {'name': 'Fajr', 'time': timings.fajr.dateTime(newNow)},
+              {'name': 'Sunrise', 'time': timings.sunrise.dateTime(newNow)},
+              {'name': 'Dhuhr', 'time': timings.dhuhr.dateTime(newNow)},
+              {'name': 'Asr', 'time': timings.asr.dateTime(newNow)},
+              {'name': 'Maghrib', 'time': timings.maghrib.dateTime(newNow)},
+              {'name': 'Isha', 'time': timings.isha.dateTime(newNow)},
+            ];
+            for (var p in prayers) {
+              final pt = p['time'] as DateTime;
+              if (pt.hour == newNow.hour && pt.minute == newNow.minute) {
+                final name = p['name'] as String;
+                if (NotificationService().isNotificationEnabled(name)) {
+                  NotificationService().triggerForegroundNotification('Time to Pray $name', 'It is now time for $name prayer.');
                 }
-              } catch (e) {
-                debugPrint("Web geocoding failed: $e");
-              }
-            } else {
-              // Mobile/Desktop Geocoding
-              try {
-                List<Placemark> placemarks = await placemarkFromCoordinates(
-                  position.latitude,
-                  position.longitude,
-                );
-                if (placemarks.isNotEmpty) {
-                  cityName =
-                      placemarks.first.locality ??
-                      placemarks.first.subAdministrativeArea ??
-                      'Unknown City';
-                  countryName = placemarks.first.country ?? 'Unknown Country';
-                }
-              } catch (e) {
-                debugPrint("Native geocoding failed: $e");
               }
             }
-
-            setState(() {
-              _prayerTimings = timings;
-              if (cityName != null) {
-                _locationName =
-                    "$cityName${countryName != null ? ', $countryName' : ''}";
-              } else {
-                _locationName =
-                    "Current Location"; // Fallback if geocoding fails but loc found
-              }
-            });
-          } catch (e) {
-            debugPrint("Location/API Error: $e");
           }
         }
       }
-
-      if (_prayerTimings == null) {
-        // Fallback to default if location failed or timings not set yet
-        final timings = await ApiService().getPrayerTimings(
-          city: 'Mecca',
-          country: 'SA',
-        );
-        setState(() {
-          _prayerTimings = timings;
-          _locationName = "Mecca, Saudi Arabia";
-        });
-      }
-
-      // Fetch completion status from DB
-      final record = await databaseHelper.getDailyRecord(today);
-
-      // Fetch all records for heatmap
-      final allRecords = await databaseHelper.getAllRecords();
-      Map<DateTime, int> datasets = {};
-
-      // Ensure today is in the dataset
-      final now = DateTime.now();
-      final todayNormalized = DateTime(now.year, now.month, now.day);
-      datasets[todayNormalized] = 0;
-
-      for (var row in allRecords) {
-        final date = DateTime.parse(row['date']);
-        int completed = 0;
-        if (row['fajr'] == 1) completed++;
-        if (row['dhuhr'] == 1) completed++;
-        if (row['asr'] == 1) completed++;
-        if (row['maghrib'] == 1) completed++;
-        if (row['isha'] == 1) completed++;
-
-        // Normalize date to remove time component for heatmap
-        final normalizedDate = DateTime(date.year, date.month, date.day);
-        datasets[normalizedDate] = completed;
-      }
-
-      // If we already have today's record from getDailyRecord, use that count
-      if (record != null) {
-        int todayCompleted = 0;
-        if (record['fajr'] == 1) todayCompleted++;
-        if (record['dhuhr'] == 1) todayCompleted++;
-        if (record['asr'] == 1) todayCompleted++;
-        if (record['maghrib'] == 1) todayCompleted++;
-        if (record['isha'] == 1) todayCompleted++;
-        datasets[todayNormalized] = todayCompleted;
-      }
-
-      setState(() {
-        _heatmapDatasets = datasets;
-        if (record != null) {
-          _prayerCompletion = {
-            'Fajr': record['fajr'] == 1,
-            'Dhuhr': record['dhuhr'] == 1,
-            'Asr': record['asr'] == 1,
-            'Maghrib': record['maghrib'] == 1,
-            'Isha': record['isha'] == 1,
-          };
-        }
-        if (userProfile != null) {
-          _userName = userProfile['name'];
-          _userImagePath = userProfile['image_path'];
-        }
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-        _isLoading = false;
-      });
-    }
-  }
-
-  MapEntry<String, int>? _getNextEvent(HijriDate date) {
-    final events = [
-      {'name': 'Islamic New Year', 'month': 1, 'day': 1},
-      {'name': 'Ashura', 'month': 1, 'day': 10},
-      {'name': 'Mawlid al-Nabi', 'month': 3, 'day': 12},
-      {'name': 'Isra and Mi\'raj', 'month': 7, 'day': 27},
-      {'name': 'Mid-Sha\'ban', 'month': 8, 'day': 15},
-      {'name': 'Ramadan Start', 'month': 9, 'day': 1},
-      {'name': 'Eid al-Fitr', 'month': 10, 'day': 1},
-      {'name': 'Arafah', 'month': 12, 'day': 9},
-      {'name': 'Eid al-Adha', 'month': 12, 'day': 10},
-    ];
-
-    for (var event in events) {
-      int eMonth = event['month'] as int;
-      int eDay = event['day'] as int;
-
-      if (eMonth > date.month || (eMonth == date.month && eDay > date.day)) {
-        int days = (eMonth - date.month) * 30 + (eDay - date.day);
-        return MapEntry(event['name'] as String, days);
-      }
-    }
-
-    var firstEvent = events.first;
-    int days =
-        (12 - date.month) * 30 + (30 - date.day) + (firstEvent['day'] as int);
-    return MapEntry(firstEvent['name'] as String, days);
-  }
-
-  Future<void> _togglePrayerStatus(String prayerName) async {
-    final databaseHelper = DatabaseHelper();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final newValue = !(_prayerCompletion[prayerName] ?? false);
-
-    await databaseHelper.insertOrUpdatePrayer(
-      today,
-      prayerName.toLowerCase(),
-      newValue,
-    );
-
-    setState(() {
-      _prayerCompletion[prayerName] = newValue;
-
-      // Update heatmap locally
-      final date = DateTime.now();
-      final normalizedDate = DateTime(date.year, date.month, date.day);
-      int currentCount = _heatmapDatasets[normalizedDate] ?? 0;
-      if (newValue) {
-        currentCount++;
-      } else {
-        currentCount--;
-      }
-      _heatmapDatasets[normalizedDate] = currentCount;
     });
   }
 
-  Color _getRingColor() {
-    int completedCount = _prayerCompletion.values.where((v) => v).length;
-    if (completedCount == 5) {
-      return Theme.of(context).colorScheme.primary; // Complete
-    } else if (completedCount >= 3) {
-      return Theme.of(context).colorScheme.secondary; // Almost there
-    } else {
-      return Theme.of(context).colorScheme.tertiary; // Needs improvement
+  @override
+  void dispose() {
+    _timer.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  DateTime _getDateForIndex(int index) {
+    final diff = index - _initialPage;
+    return _referenceDate.add(Duration(days: diff));
+  }
+
+  Future<void> _fetchInitialLocationAndData() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _errorMessage = 'Location services are disabled.';
+        _loadDataForDate(DateTime.now());
+        return;
+      }
+      
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _errorMessage = 'Location permissions denied.';
+          _loadDataForDate(DateTime.now());
+          return;
+        }
+      }
+      
+      if (permission == LocationPermission.deniedForever) {
+         _errorMessage = 'Location permissions permanently denied.';
+         _loadDataForDate(DateTime.now());
+         return;
+      }
+
+      _currentPosition = await Geolocator.getCurrentPosition();
+      
+      String? cityName;
+      String? countryName;
+
+      if (kIsWeb) {
+        try {
+          final url = Uri.parse(
+            'https://nominatim.openstreetmap.org/reverse?format=json&lat=${_currentPosition!.latitude}&lon=${_currentPosition!.longitude}&zoom=10',
+          );
+          final response = await http.get(url, headers: {'User-Agent': 'SirrApp'});
+          if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            final address = data['address'];
+            cityName = address['city'] ?? address['town'] ?? address['village'] ?? address['state'];
+            countryName = address['country'];
+          }
+        } catch (e) {
+          debugPrint("Web geocoding failed: $e");
+        }
+      } else {
+        try {
+          List<Placemark> placemarks = await placemarkFromCoordinates(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+          );
+          if (placemarks.isNotEmpty) {
+            cityName = placemarks.first.locality ?? placemarks.first.subAdministrativeArea;
+            countryName = placemarks.first.country;
+          }
+        } catch (e) {
+          debugPrint("Native geocoding failed: $e");
+        }
+      }
+
+      if (cityName != null) {
+        _locationName = "$cityName${countryName != null ? ', $countryName' : ''}";
+      } else {
+        _locationName = "Current Location";
+      }
+
+      await _loadDataForDate(DateTime.now());
+      // Pre-load adjacent days so countdown/next-prayer cards work at day boundaries
+      _loadDataForDate(DateTime.now().add(const Duration(days: 1)));
+      _loadDataForDate(DateTime.now().subtract(const Duration(days: 1)));
+      
+      setState(() {
+        _isLoading = false;
+      });
+      
+    } catch (e) {
+      _errorMessage = e.toString();
+      _loadDataForDate(DateTime.now());
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // Define a nice gradient background based on the primary color
-    // final primaryColor = Theme.of(context).colorScheme.primary; // Unused now
+  Future<void> _loadDataForDate(DateTime date) async {
+    final dateString = DateFormat('yyyy-MM-dd').format(date);
+    if (_cache.containsKey(dateString)) return;
 
-    return Scaffold(
-      extendBodyBehindAppBar:
-          true, // If we had an app bar, this would be needed
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _errorMessage.isNotEmpty
-            ? Center(
-                child: Text(
-                  _errorMessage,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              )
-            : ListView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20.0,
-                  vertical: 20.0,
-                ),
-                children: [
-                  // Header
-                  GlassContainer(
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: _getRingColor(),
-                              width: 3,
-                            ),
-                          ),
-                          child: CircleAvatar(
-                            radius: 25,
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.surface.withOpacity(0.5),
-                            backgroundImage: _userImagePath != null
-                                ? FileImage(File(_userImagePath!))
-                                : null,
-                            child: _userImagePath == null
-                                ? const Icon(Icons.person)
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(width: 15),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Salam, ${_userName ?? 'User'}",
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                DateFormat(
-                                  'EEEE, d MMMM',
-                                ).format(DateTime.now()),
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 2),
-                              Row(
-                                children: [
-                                  const Icon(Icons.location_on, size: 12),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _locationName,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+    try {
+      PrayerTimings timings;
+      if (_currentPosition != null) {
+        timings = await ApiService().getPrayerTimingsByLocation(
+          latitude: _currentPosition!.latitude,
+          longitude: _currentPosition!.longitude,
+          targetDate: date,
+        );
+      } else {
+        timings = await ApiService().getPrayerTimings(
+          city: 'Mecca',
+          country: 'SA',
+          targetDate: date,
+        );
+      }
+      
+      if (mounted) {
+        setState(() {
+          _cache[dateString] = timings;
+          _isLoading = false;
+        });
+        
+        // Update theme provider
+        if (dateString == DateFormat('yyyy-MM-dd').format(DateTime.now())) {
+           Provider.of<ThemeProvider>(context, listen: false).updatePeriod(DateTime.now(), timings.toDateTimeMap());
+        }
+        
+        NotificationService().schedulePrayerNotifications(_cache);
+      }
+    } catch (e) {
+      debugPrint("Error loading data: $e");
+    }
+  }
 
-                  const SizedBox(height: 30),
+  Map<String, dynamic>? _getCurrentPrayer(PrayerTimings timings, DateTime date) {
+    final prayers = [
+      {'name': 'Fajr', 'time': timings.fajr.dateTime(date)},
+      {'name': 'Sunrise', 'time': timings.sunrise.dateTime(date)},
+      {'name': 'Dhuhr', 'time': timings.dhuhr.dateTime(date)},
+      {'name': 'Asr', 'time': timings.asr.dateTime(date)},
+      {'name': 'Maghrib', 'time': timings.maghrib.dateTime(date)},
+      {'name': 'Isha', 'time': timings.isha.dateTime(date)},
+    ];
+    for (int i = prayers.length - 1; i >= 0; i--) {
+      if (_now.isAfter(prayers[i]['time'] as DateTime)) {
+        return prayers[i];
+      }
+    }
+    
+    final yesterday = date.subtract(const Duration(days: 1));
+    final yesterdayString = DateFormat('yyyy-MM-dd').format(yesterday);
+    if (_cache.containsKey(yesterdayString)) {
+      final yesterdayTimings = _cache[yesterdayString]!;
+      return {'name': 'Isha', 'time': yesterdayTimings.isha.dateTime(yesterday)};
+    }
+    
+    return null;
+  }
 
-                  if (_prayerTimings != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 20.0),
-                      child: GlassContainer(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      "${_prayerTimings!.hijriDate.day} ${_prayerTimings!.hijriDate.monthName}",
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .headlineSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.onSurface,
-                                          ),
-                                    ),
-                                    Text(
-                                      "${_prayerTimings!.hijriDate.year} AH",
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurface
-                                                .withOpacity(0.7),
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                                if (_prayerTimings!
-                                    .hijriDate
-                                    .holidays
-                                    .isNotEmpty)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primaryContainer,
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.primary,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      _prayerTimings!
-                                          .hijriDate
-                                          .holidays
-                                          .first, // Show first holiday
-                                      style: TextStyle(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onPrimaryContainer,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Builder(
-                              builder: (context) {
-                                final nextEvent = _getNextEvent(
-                                  _prayerTimings!.hijriDate,
-                                );
-                                if (nextEvent != null) {
-                                  return Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurface.withOpacity(0.05),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.event,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                              .withOpacity(0.7),
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            "Next: ${nextEvent.key}",
-                                            style: TextStyle(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .onSurface
-                                                  .withOpacity(0.7),
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          "${nextEvent.value} days",
-                                          style: TextStyle(
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.onSurface,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-                                return const SizedBox.shrink();
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+  Map<String, dynamic>? _getNextPrayer(PrayerTimings timings, DateTime date) {
+    final prayers = [
+      {'name': 'Fajr', 'time': timings.fajr.dateTime(date)},
+      {'name': 'Sunrise', 'time': timings.sunrise.dateTime(date)},
+      {'name': 'Dhuhr', 'time': timings.dhuhr.dateTime(date)},
+      {'name': 'Asr', 'time': timings.asr.dateTime(date)},
+      {'name': 'Maghrib', 'time': timings.maghrib.dateTime(date)},
+      {'name': 'Isha', 'time': timings.isha.dateTime(date)},
+    ];
+    for (var p in prayers) {
+      if (_now.isBefore(p['time'] as DateTime)) {
+        return p;
+      }
+    }
+    
+    final tomorrow = date.add(const Duration(days: 1));
+    final tomorrowString = DateFormat('yyyy-MM-dd').format(tomorrow);
+    if (_cache.containsKey(tomorrowString)) {
+      final tomorrowTimings = _cache[tomorrowString]!;
+      return {'name': 'Fajr', 'time': tomorrowTimings.fajr.dateTime(tomorrow)};
+    }
+    
+    return null;
+  }
 
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20.0),
-                    child: GlassContainer(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          HeatMapCalendar(
-                            datasets: _heatmapDatasets,
-                            colorMode: ColorMode.color,
-                            defaultColor: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withOpacity(0.1), // Glass shade
-                            textColor:
-                                Colors.transparent, // Hide numbers inside boxes
-                            showColorTip: false,
-                            flexible: true,
-                            weekTextColor: Colors.transparent, // Hide labels
-                            colorsets: {
-                              1: Theme.of(
-                                context,
-                              ).colorScheme.primary.withOpacity(0.2),
-                              2: Theme.of(
-                                context,
-                              ).colorScheme.primary.withOpacity(0.4),
-                              3: Theme.of(
-                                context,
-                              ).colorScheme.primary.withOpacity(0.6),
-                              4: Theme.of(
-                                context,
-                              ).colorScheme.primary.withOpacity(0.8),
-                              5: Theme.of(context).colorScheme.primary,
-                            },
-                            onClick: (value) {
-                              _showGlassDialog(
-                                DateFormat('EEEE, d MMMM yyyy').format(value),
-                              );
-                            },
-                            initDate: DateTime.now(),
-                            size: 30,
-                            margin: const EdgeInsets.all(4),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+  Widget _buildDateHeader(int index, PrayerTimings timings, DateTime date) {
+    final hijriFormatted = "${timings.hijriDate.day} ${timings.hijriDate.monthName}, ${timings.hijriDate.year}";
+    final gregorianFormatted = DateFormat('EEE, d MMMM yyyy').format(date);
 
-                  Text(
-                    "Today's Prayers",
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.color, // Ensure correct color for M3
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 15),
-
-                  // Prayer List
-                  if (_prayerTimings != null) ...[
-                    _buildPrayerItem("Fajr", _prayerTimings!.fajr.readable),
-                    _buildPrayerItem("Dhuhr", _prayerTimings!.dhuhr.readable),
-                    _buildPrayerItem("Asr", _prayerTimings!.asr.readable),
-                    _buildPrayerItem(
-                      "Maghrib",
-                      _prayerTimings!.maghrib.readable,
-                    ),
-                    _buildPrayerItem("Isha", _prayerTimings!.isha.readable),
-                  ],
-                  const SizedBox(height: 20),
-                ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: Icon(Icons.chevron_left, color: Theme.of(context).colorScheme.primary, size: 18),
+            onPressed: () {
+              _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+            },
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                hijriFormatted,
+                style: GoogleFonts.amiri(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
               ),
+              const SizedBox(height: 2),
+              Text(
+                gregorianFormatted,
+                style: GoogleFonts.amiri(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
+              ),
+            ],
+          ),
+          IconButton(
+            icon: Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.primary, size: 18),
+            onPressed: () {
+              _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+            },
+          ),
+        ],
       ),
     );
   }
 
-  void _showGlassDialog(String message) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.2),
-      builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          child: GlassContainer(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            borderRadius: 20,
-            opacity: 0.2, // Stronger glass for popup
-            borderColor: Theme.of(
-              context,
-            ).colorScheme.onSurface.withOpacity(0.3),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+  Widget _buildNowPrayingCard(PrayerTimings timings, DateTime date) {
+    // Only show "now praying" on today's page
+    final todayString = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final dateString = DateFormat('yyyy-MM-dd').format(date);
+    if (todayString != dateString) {
+      // On non-today pages, show the first prayer of the day
+      final firstPrayer = {'name': 'Fajr', 'time': timings.fajr.dateTime(date)};
+      final secondPrayer = {'name': 'Sunrise', 'time': timings.sunrise.dateTime(date)};
+      final currentName = firstPrayer['name'] as String;
+      final currentTime = DateFormat('h:mm a').format(firstPrayer['time'] as DateTime);
+      final endsTime = "ends ${DateFormat('h:mma').format(secondPrayer['time'] as DateTime).toLowerCase()}";
+      return _buildPrayingCardUI(currentName, currentTime, endsTime, "FIRST PRAYER");
+    }
+
+    final current = _getCurrentPrayer(timings, date);
+    final next = _getNextPrayer(timings, date);
+    if (current == null) return const SizedBox.shrink();
+    
+    final currentName = current['name'] as String;
+    final currentTime = DateFormat('h:mm a').format(current['time'] as DateTime);
+    final endsTime = next != null ? "ends ${DateFormat('h:mma').format(next['time'] as DateTime).toLowerCase()}" : "";
+    
+    String? elapsedString;
+    if (todayString == dateString) {
+      final startTime = current['time'] as DateTime;
+      if (_now.isAfter(startTime)) {
+        final elapsed = _now.difference(startTime);
+        final hours = elapsed.inHours.toString().padLeft(2, '0');
+        final mins = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
+        final secs = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+        elapsedString = "+ $hours:$mins:$secs since Azhaan";
+      }
+    }
+
+    return _buildPrayingCardUI(currentName, currentTime, endsTime, "NOW TIME TO PRAY", elapsedString);
+  }
+
+  Widget _buildPrayingCardUI(String prayerName, String time, String endsLabel, String label, [String? elapsedString]) {
+    final timeParts = time.split(' ');
+    final timeValue = timeParts[0];
+    final timePeriod = timeParts.length > 1 ? timeParts[1] : '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [ BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.5), offset: Offset(0, 4)),
+          BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.1), offset: Offset(0, 1), blurRadius: 0, spreadRadius: -1),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.amiri(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.primary,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            prayerName.toUpperCase(),
+            style: GoogleFonts.amiri(
+              fontSize: 44,
+              height: 1.0,
+              color: Theme.of(context).colorScheme.onSurface,
+              shadows: [
+                Shadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), offset: Offset(1, 1)),
+                Shadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), offset: Offset(2, 2)),
+                Shadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), offset: Offset(3, 3)),
+                Shadow(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1), offset: Offset(4, 4)),
+                Shadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.6), offset: Offset(5, 5), blurRadius: 6),
+              ],
+            ),
+          ),
+          if (elapsedString != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              elapsedString,
+              style: GoogleFonts.amiri(
+                fontSize: 14,
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: timeValue,
+                      style: GoogleFonts.amiri(fontSize: 22, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurface),
+                    ),
+                    TextSpan(
+                      text: ' $timePeriod',
+                      style: GoogleFonts.amiri(fontSize: 13, fontWeight: FontWeight.w400, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                endsLabel,
+                style: GoogleFonts.amiri(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFlipDigit(String char) {
+    if (char == ':') {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+        child: Text(
+          ":",
+          style: GoogleFonts.amiri(
+            fontSize: 36,
+            height: 1.0,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+      );
+    }
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) {
+            final transform = Matrix4.identity()
+              ..setEntry(3, 2, 0.002)
+              ..rotateX((1 - animation.value) * (3.14 / 2));
+            return Transform(
+              alignment: FractionalOffset.center,
+              transform: transform,
+              child: Opacity(
+                opacity: animation.value,
+                child: child,
+              ),
+            );
+          },
+          child: child,
+        );
+      },
+      child: Container(
+        key: ValueKey<String>(char),
+        margin: const EdgeInsets.symmetric(horizontal: 2.0),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        clipBehavior: Clip.hardEdge,
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [ BoxShadow(
+              color: Colors.black26,
+              offset: Offset(0, 3),
+              blurRadius: 4,
+            )
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Text(
+              char,
+              style: GoogleFonts.amiri(
+                fontSize: 36,
+                height: 1.0,
+                color: Theme.of(context).colorScheme.onSurface,
+                shadows: [
+                  Shadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), offset: Offset(1, 1)),
+                  Shadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), offset: Offset(2, 2)),
+                  Shadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), offset: Offset(3, 3)),
+                  Shadow(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1), offset: Offset(4, 4)),
+                  Shadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.6), offset: Offset(5, 5), blurRadius: 6),
+                ],
+              ),
+            ),
+            Positioned(
+              left: -8,
+              right: -8,
+              child: Container(
+                height: 1.5,
+                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.8),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCountdownCard(PrayerTimings timings, DateTime date) {
+    final next = _getNextPrayer(timings, date);
+    if (next == null) return const SizedBox.shrink();
+
+    final diff = (next['time'] as DateTime).difference(_now);
+    if (diff.isNegative) return const SizedBox.shrink();
+
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final h = twoDigits(diff.inHours);
+    final m = twoDigits(diff.inMinutes.remainder(60));
+    final s = twoDigits(diff.inSeconds.remainder(60));
+    final countdownString = "$h:$m:$s";
+
+    final nextTimeFormatted = DateFormat('h:mm a').format(next['time'] as DateTime).toUpperCase();
+    
+    // progress logic
+    final current = _getCurrentPrayer(timings, date);
+    double pct = 0.0;
+    if (current != null) {
+      final totalWindow = (next['time'] as DateTime).difference(current['time'] as DateTime).inMilliseconds;
+      final elapsed = _now.difference(current['time'] as DateTime).inMilliseconds;
+      if (totalWindow > 0) {
+        pct = (elapsed / totalWindow).clamp(0.0, 1.0);
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [ BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.5), offset: Offset(0, 4)),
+          BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.1), offset: Offset(0, 1), blurRadius: 0, spreadRadius: -1),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "TIME UNTIL ${next['name'].toString().toUpperCase()}",
+                style: GoogleFonts.amiri(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.primary,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              Text(
+                nextTimeFormatted,
+                style: GoogleFonts.amiri(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6.0),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: countdownString.split('').map((char) => _buildFlipDigit(char)).toList(),
+              ),
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(top: 14),
+            height: 5,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: pct,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNextPrayerDetailCard(PrayerTimings timings, DateTime date) {
+    final next = _getNextPrayer(timings, date);
+    if (next == null) return const SizedBox.shrink();
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [ BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.5), offset: Offset(0, 4)),
+          BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.1), offset: Offset(0, 1), blurRadius: 0, spreadRadius: -1),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "NEXT PRAYER",
+            style: GoogleFonts.amiri(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.primary,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                next['name'].toString().toUpperCase(),
+                style: GoogleFonts.amiri(
+                  fontSize: 22,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: DateFormat('h:mm').format(next['time'] as DateTime),
+                      style: GoogleFonts.amiri(fontSize: 18, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurface),
+                    ),
+                    TextSpan(
+                      text: ' ${DateFormat('a').format(next['time'] as DateTime).toLowerCase()}',
+                      style: GoogleFonts.amiri(fontSize: 12, fontWeight: FontWeight.w400, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15))),
+            ),
+            padding: const EdgeInsets.only(top: 12),
+            child: Row(
               children: [
-                Icon(
-                  Icons.calendar_today,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withOpacity(0.7),
-                  size: 30,
+                Expanded(child: _buildSunInfo(Icons.wb_twilight, "SUNRISE", timings.sunrise.readable)),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  message,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
+                Expanded(child: _buildSunInfo(Icons.wb_sunny, "MID DAY", timings.dhuhr.readable)),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15),
                 ),
-                const SizedBox(height: 5),
+                Expanded(child: _buildSunInfo(Icons.nights_stay, "SUNSET", timings.maghrib.readable)),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSunInfo(IconData icon, String label, String time) {
+    return Column(
+      children: [
+        Icon(icon, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: GoogleFonts.amiri(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.5,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          time.toLowerCase(),
+          style: GoogleFonts.amiri(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrayerList(PrayerTimings timings, DateTime date) {
+    final current = _getCurrentPrayer(timings, date);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [ BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.5), offset: Offset(0, 4)),
+          BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.1), offset: Offset(0, 1), blurRadius: 0, spreadRadius: -1),
+        ],
+      ),
+      child: Column(
+        children: [
+          _buildPrayerListItem("Fajr", timings.fajr.dateTime(date), Icons.dark_mode, current != null && current['name'] == 'Fajr'),
+          _buildPrayerListItem("Dhuhr", timings.dhuhr.dateTime(date), Icons.wb_sunny, current != null && current['name'] == 'Dhuhr'),
+          _buildPrayerListItem("Asr", timings.asr.dateTime(date), Icons.cloud, current != null && current['name'] == 'Asr'),
+          _buildPrayerListItem("Maghrib", timings.maghrib.dateTime(date), Icons.thunderstorm, current != null && current['name'] == 'Maghrib'),
+          _buildPrayerListItem("Isha", timings.isha.dateTime(date), Icons.bedtime, current != null && current['name'] == 'Isha', isLast: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrayerListItem(String name, DateTime time, IconData icon, bool isActive, {bool isLast = false}) {
+    if (isActive) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 17, color: Theme.of(context).colorScheme.onPrimary),
+                const SizedBox(width: 10),
                 Text(
-                  "Activity recorded", // Or fetch activity details if needed
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withOpacity(0.7),
+                  name,
+                  style: GoogleFonts.amiri(fontSize: 14, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onPrimary),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Text(
+                  DateFormat('h:mm a').format(time).toLowerCase(),
+                  style: GoogleFonts.amiri(fontSize: 14, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onPrimary),
+                ),
+                GestureDetector(
+                  onTap: () async {
+                    await NotificationService().toggleNotification(name);
+                    setState(() {});
+                  },
+                  child: Icon(
+                    NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
+                    size: 15,
+                    color: Theme.of(context).colorScheme.onPrimary,
                   ),
                 ),
               ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      decoration: BoxDecoration(
+        border: isLast ? null : Border(bottom: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 17, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              const SizedBox(width: 10),
+              Text(
+                name,
+                style: GoogleFonts.amiri(fontSize: 14, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Text(
+                DateFormat('h:mm a').format(time).toLowerCase(),
+                style: GoogleFonts.amiri(fontSize: 14, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+              GestureDetector(
+                onTap: () async {
+                  await NotificationService().toggleNotification(name);
+                  setState(() {});
+                },
+                child: Icon(
+                  NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
+                  size: 15,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingDateOverlay() {
+    return AnimatedBuilder(
+      animation: _pageController,
+      builder: (context, child) {
+        if (!_pageController.position.haveDimensions) return const SizedBox.shrink();
+
+        double page = _pageController.page!;
+        double diff = (page - page.roundToDouble()).abs();
+
+        // Fully hidden when not swiping
+        if (diff < 0.01) return const SizedBox.shrink();
+
+        // Destination is the nearest page we're heading towards
+        final targetIndex = page.round();
+
+        final targetDate = _getDateForIndex(targetIndex);
+        final day = DateFormat('d').format(targetDate);
+        final month = DateFormat('MMMM').format(targetDate).toUpperCase();
+
+        // Fade in/out based on swipe progress
+        double opacity = (diff < 0.5 ? diff * 2 : (1 - diff) * 2).clamp(0.0, 1.0);
+
+        return IgnorePointer(
+          child: Center(
+            child: Opacity(
+              opacity: opacity * 0.35,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    day,
+                    style: GoogleFonts.amiri(
+                      fontSize: 160,
+                      color: Theme.of(context).colorScheme.primary,
+                      height: 1.0,
+                    ),
+                  ),
+                  Text(
+                    month,
+                    style: GoogleFonts.amiri(
+                      fontSize: 40,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 8,
+                      color: Theme.of(context).colorScheme.primary,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -639,80 +874,302 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  String _formatTime(String time) {
-    try {
-      final cleanTime = time.split(' ')[0];
-      final dateTime = DateFormat("HH:mm").parse(cleanTime);
-      return DateFormat("h:mm a").format(dateTime);
-    } catch (e) {
-      return time;
-    }
-  }
+  Widget _buildSkeletonLoading(bool isDesktop) {
+    final cardColor = Colors.white;
+    final r22 = BorderRadius.circular(22);
+    final r8 = BorderRadius.circular(8);
+    final r4 = BorderRadius.circular(4);
 
-  Widget _buildPrayerItem(String name, String time) {
-    final isCompleted = _prayerCompletion[name] ?? false;
+    final header = Column(
+      children: [
+        const SizedBox(height: 14),
+        Center(child: Container(height: 16, width: 180, decoration: BoxDecoration(color: cardColor, borderRadius: r8))),
+        const SizedBox(height: 4),
+        Center(child: Container(height: 12, width: 140, decoration: BoxDecoration(color: cardColor, borderRadius: r4))),
+        const SizedBox(height: 18),
+      ],
+    );
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Dismissible(
-        key: Key(name),
-        direction: DismissDirection.startToEnd,
-        background: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.only(left: 20),
-          child: Icon(
-            Icons.check,
-            color: Theme.of(context).colorScheme.onPrimary,
-          ),
-        ),
-        confirmDismiss: (direction) async {
-          _togglePrayerStatus(name);
-          return false; // Don't remove the item
-        },
-        child: GlassContainer(
-          opacity: isCompleted ? 0.3 : 0.15,
-          borderColor: isCompleted
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: Row(
+    final card1 = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+      decoration: BoxDecoration(color: cardColor, borderRadius: r22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(height: 12, width: 120, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+          const SizedBox(height: 10),
+          Container(height: 40, width: 180, decoration: BoxDecoration(color: cardColor, borderRadius: r8)),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                name,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: isCompleted
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-              if (isCompleted) ...[
+              Container(height: 18, width: 80, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+              Container(height: 12, width: 90, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    final card2 = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: BoxDecoration(color: cardColor, borderRadius: r22),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(height: 12, width: 110, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+              Container(height: 12, width: 60, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(height: 36, width: 200, decoration: BoxDecoration(color: cardColor, borderRadius: r8)),
+          const SizedBox(height: 16),
+          Container(height: 5, width: double.infinity, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+        ],
+      ),
+    );
+
+    final card3 = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: cardColor, borderRadius: r22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(height: 12, width: 100, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(height: 22, width: 80, decoration: BoxDecoration(color: cardColor, borderRadius: r8)),
+              Container(height: 18, width: 70, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(height: 1, width: double.infinity, color: cardColor),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: Column(children: [
+                Container(height: 18, width: 18, decoration: BoxDecoration(color: cardColor, shape: BoxShape.circle)),
+                const SizedBox(height: 6),
+                Container(height: 10, width: 50, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+                const SizedBox(height: 4),
+                Container(height: 14, width: 55, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+              ])),
+              Expanded(child: Column(children: [
+                Container(height: 18, width: 18, decoration: BoxDecoration(color: cardColor, shape: BoxShape.circle)),
+                const SizedBox(height: 6),
+                Container(height: 10, width: 50, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+                const SizedBox(height: 4),
+                Container(height: 14, width: 55, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+              ])),
+              Expanded(child: Column(children: [
+                Container(height: 18, width: 18, decoration: BoxDecoration(color: cardColor, shape: BoxShape.circle)),
+                const SizedBox(height: 6),
+                Container(height: 10, width: 50, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+                const SizedBox(height: 4),
+                Container(height: 14, width: 55, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+              ])),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    final card4 = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+      decoration: BoxDecoration(color: cardColor, borderRadius: r22),
+      child: Column(
+        children: List.generate(5, (i) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(children: [
+                Container(height: 17, width: 17, decoration: BoxDecoration(color: cardColor, shape: BoxShape.circle)),
+                const SizedBox(width: 10),
+                Container(height: 14, width: 60, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
+              ]),
+              Row(children: [
+                Container(height: 14, width: 60, decoration: BoxDecoration(color: cardColor, borderRadius: r4)),
                 const SizedBox(width: 8),
-                Icon(
-                  Icons.check_circle,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ],
-              const Spacer(),
-              Text(
-                _formatTime(time),
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: isCompleted
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withOpacity(0.7),
-                ),
+                Container(height: 15, width: 15, decoration: BoxDecoration(color: cardColor, shape: BoxShape.circle)),
+              ]),
+            ],
+          ),
+        )),
+      ),
+    );
+
+    Widget content;
+    if (isDesktop) {
+      content = Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 840),
+          child: Column(
+            children: [
+              header,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      children: [card1, const SizedBox(height: 12), card2, const SizedBox(height: 12), card3],
+                    ),
+                  ),
+                  const SizedBox(width: 40),
+                  Expanded(
+                    child: card4,
+                  ),
+                ],
               ),
             ],
           ),
         ),
+      );
+    } else {
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header, card1, const SizedBox(height: 12), card2, const SizedBox(height: 12), card3, const SizedBox(height: 12), card4
+        ],
+      );
+    }
+
+    return Shimmer.fromColors(
+      baseColor: Theme.of(context).colorScheme.primaryContainer,
+      highlightColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08),
+      child: content,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDesktop = MediaQuery.of(context).size.width > 840;
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: SafeArea(child: _buildSkeletonLoading(isDesktop)),
+      );
+    }
+
+    if (_errorMessage.isNotEmpty && _cache.isEmpty) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Center(child: Text(_errorMessage, style: TextStyle(color: Colors.white))),
+      );
+    }
+
+    final pageView = PageView.builder(
+      controller: _pageController,
+      onPageChanged: (index) {
+        setState(() {
+          _currentPageIndex = index;
+        });
+        final date = _getDateForIndex(index);
+        _loadDataForDate(date);
+        _loadDataForDate(date.add(const Duration(days: 1)));
+        _loadDataForDate(date.subtract(const Duration(days: 1)));
+      },
+      itemBuilder: (context, index) {
+        final targetDate = _getDateForIndex(index);
+        final dateString = DateFormat('yyyy-MM-dd').format(targetDate);
+        final timings = _cache[dateString];
+
+        if (timings == null) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0),
+            child: _buildSkeletonLoading(isDesktop),
+          );
+        }
+
+        Widget mainContent;
+        if (isDesktop) {
+          mainContent = SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 840),
+                child: Column(
+                  children: [
+                    _buildDateHeader(index, timings, targetDate),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            children: [
+                              _buildNowPrayingCard(timings, targetDate),
+                              _buildCountdownCard(timings, targetDate),
+                              _buildNextPrayerDetailCard(timings, targetDate),
+                              const SizedBox(height: 40),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 40),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              _buildPrayerList(timings, targetDate),
+                              const SizedBox(height: 40),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        } else {
+          mainContent = SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+            child: Column(
+              children: [
+                _buildDateHeader(index, timings, targetDate),
+                _buildNowPrayingCard(timings, targetDate),
+                _buildCountdownCard(timings, targetDate),
+                _buildNextPrayerDetailCard(timings, targetDate),
+                _buildPrayerList(timings, targetDate),
+                const SizedBox(height: 40),
+              ],
+            ),
+          );
+        }
+
+        return mainContent;
+      },
+    );
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            pageView,
+            _buildFloatingDateOverlay(),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        child: Icon(Icons.bug_report, color: Theme.of(context).colorScheme.primary),
+        onPressed: () {
+          NotificationService().triggerForegroundNotification('Test Notification', 'This is a debug notification test!');
+          if (_cache.isNotEmpty) {
+            Provider.of<ThemeProvider>(context, listen: false)
+                .updatePeriod(DateTime.now().add(const Duration(hours: 4)), _cache.values.first.toDateTimeMap());
+          }
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Triggered test notification and cycled theme!')));
+        },
       ),
     );
   }

@@ -50,6 +50,7 @@ dependencies:
   timezone: ^0.11.1
   tabler_icons_plus: ^3.44.0
   universal_html: ^2.3.0
+  flutter_compass: ^0.8.1
 
 dev_dependencies:
   flutter_test:

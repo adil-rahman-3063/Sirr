@@ -12,7 +12,11 @@ import 'package:sirr/services/api_service.dart';
 import 'package:sirr/providers/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:timezone/data/latest.dart' as tz;
 import 'package:sirr/services/notification_service.dart';
+import 'package:flutter_compass/flutter_compass.dart';
+import 'dart:math' as math;
+import 'package:universal_html/html.dart' as html;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -763,10 +767,18 @@ class _HomePageState extends State<HomePage> {
                     await NotificationService().toggleNotification(name);
                     setState(() {});
                   },
-                  child: Icon(
-                    NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
-                    size: 15,
-                    color: Theme.of(context).colorScheme.onPrimary,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 500),
+                    transitionBuilder: (Widget child, Animation<double> animation) {
+                      final curvedAnimation = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
+                      return ScaleTransition(scale: curvedAnimation, child: FadeTransition(opacity: animation, child: child));
+                    },
+                    child: Icon(
+                      NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
+                      key: ValueKey<bool>(NotificationService().isNotificationEnabled(name)),
+                      size: 15,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
                   ),
                 ),
               ],
@@ -805,10 +817,18 @@ class _HomePageState extends State<HomePage> {
                   await NotificationService().toggleNotification(name);
                   setState(() {});
                 },
-                child: Icon(
-                  NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
-                  size: 15,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    final curvedAnimation = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
+                    return ScaleTransition(scale: curvedAnimation, child: FadeTransition(opacity: animation, child: child));
+                  },
+                  child: Icon(
+                    NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
+                    key: ValueKey<bool>(NotificationService().isNotificationEnabled(name)),
+                    size: 15,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],
@@ -1160,17 +1180,187 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        child: Icon(Icons.bug_report, color: Theme.of(context).colorScheme.primary),
-        onPressed: () {
-          NotificationService().triggerForegroundNotification('Test Notification', 'This is a debug notification test!');
-          if (_cache.isNotEmpty) {
-            Provider.of<ThemeProvider>(context, listen: false)
-                .updatePeriod(DateTime.now().add(const Duration(hours: 4)), _cache.values.first.toDateTimeMap());
-          }
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Triggered test notification and cycled theme!')));
-        },
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        child: const Icon(Icons.explore, color: Colors.white),
+        onPressed: _showCompassModal,
       ),
+    );
+  }
+
+  void _showCompassModal() {
+    double userLat = 0.0;
+    double userLon = 0.0;
+    
+    if (_currentPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location not available. Using default location (London).')));
+      // Fallback to London coordinates so the UI still works
+      userLat = 51.5074;
+      userLon = -0.1278;
+    } else {
+      userLat = _currentPosition!.latitude;
+      userLon = _currentPosition!.longitude;
+    }
+    
+    // Mecca coordinates
+    const double meccaLat = 21.422487;
+    const double meccaLon = 39.826208;
+    
+    // Calculate Qibla Bearing
+    final double lat1 = userLat * math.pi / 180.0;
+    final double lat2 = meccaLat * math.pi / 180.0;
+    final double lonDiff = (meccaLon - userLon) * math.pi / 180.0;
+    
+    final double y = math.sin(lonDiff) * math.cos(lat2);
+    final double x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(lonDiff);
+    
+    double qiblaBearing = math.atan2(y, x) * 180.0 / math.pi;
+    if (qiblaBearing < 0) {
+      qiblaBearing += 360.0;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+            boxShadow: [
+              BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), blurRadius: 20, spreadRadius: 5),
+            ],
+          ),
+          child: StreamBuilder<dynamic>(
+            stream: kIsWeb ? html.window.onDeviceOrientation : FlutterCompass.events,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Error reading compass: ${snapshot.error}'));
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              
+              double? deviceHeading;
+              
+              if (kIsWeb) {
+                final html.DeviceOrientationEvent? event = snapshot.data as html.DeviceOrientationEvent?;
+                if (event != null && event.alpha != null) {
+                  // In browser, alpha is usually clockwise rotation.
+                  deviceHeading = 360.0 - event.alpha!.toDouble();
+                }
+              } else {
+                deviceHeading = (snapshot.data as CompassEvent?)?.heading;
+              }
+
+              if (deviceHeading == null) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Text(
+                      'Compass not available on this device.\nEnsure you are using a secure connection (HTTPS) if on mobile web.', 
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.amiri(fontSize: 18, color: Theme.of(context).colorScheme.onSurface)
+                    ),
+                  )
+                );
+              }
+
+              // Calculate rotation to point to Qibla
+              final double rotationAngle = (qiblaBearing - deviceHeading) * (math.pi / 180.0);
+              
+              // Helper to get cardinal direction
+              String getCardinalDirection(double angle) {
+                    if (angle >= 337.5 || angle < 22.5) return 'N';
+                    if (angle >= 22.5 && angle < 67.5) return 'NE';
+                    if (angle >= 67.5 && angle < 112.5) return 'E';
+                    if (angle >= 112.5 && angle < 157.5) return 'SE';
+                    if (angle >= 157.5 && angle < 202.5) return 'S';
+                    if (angle >= 202.5 && angle < 247.5) return 'SW';
+                    if (angle >= 247.5 && angle < 292.5) return 'W';
+                    if (angle >= 292.5 && angle < 337.5) return 'NW';
+                    return '';
+                  }
+
+                  return Stack(
+                    children: [
+                      // Top Heading
+                      Positioned(
+                        top: 60,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Text(
+                            '${deviceHeading.toStringAsFixed(0)}° ${getCardinalDirection(deviceHeading)}',
+                            style: GoogleFonts.amiri(
+                              fontSize: 48,
+                              fontWeight: FontWeight.w300,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ),
+                      
+                      // Right Action Icons
+                      Positioned(
+                        top: 20,
+                        right: 20,
+                        child: Column(
+                          children: [
+                            IconButton(icon: Icon(Icons.location_on, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                            IconButton(icon: Icon(Icons.settings, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                            IconButton(icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                            IconButton(icon: Icon(Icons.dark_mode, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                            IconButton(icon: Icon(Icons.info, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                          ],
+                        ),
+                      ),
+
+                      // Center Qibla Pointer
+                      Center(
+                        child: Transform.rotate(
+                          angle: rotationAngle,
+                          child: Icon(
+                            Icons.navigation,
+                            size: 200,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+
+                      // Bottom Coordinates
+                      Positioned(
+                        bottom: 40,
+                        left: 0,
+                        right: 0,
+                        child: Column(
+                          children: [
+                            Text(
+                              '${userLat.toStringAsFixed(4)}°N   ${userLon.toStringAsFixed(4)}°E',
+                              style: GoogleFonts.amiri(
+                                fontSize: 14,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Qibla: ${qiblaBearing.toStringAsFixed(1)}°',
+                              style: GoogleFonts.amiri(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+        );
+      }
     );
   }
 }

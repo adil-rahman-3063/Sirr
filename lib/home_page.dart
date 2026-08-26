@@ -46,6 +46,7 @@ class _HomePageState extends State<HomePage> {
     _referenceDate = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
     _pageController = PageController(initialPage: _initialPage);
     _fetchInitialLocationAndData();
+    _checkAndShowInstallPrompt();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         final newNow = DateTime.now();
@@ -86,6 +87,99 @@ class _HomePageState extends State<HomePage> {
     _timer.cancel();
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _checkAndShowInstallPrompt() {
+    if (!kIsWeb) return;
+    
+    // Use Future.delayed to ensure context is fully built and mounted before showing dialog
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      
+      try {
+        final bool isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;
+        if (isStandalone) return; // Already installed as PWA
+
+        final userAgent = html.window.navigator.userAgent.toLowerCase();
+        final isIOS = userAgent.contains('iphone') || userAgent.contains('ipad') || userAgent.contains('ipod');
+        final isAndroid = userAgent.contains('android');
+
+        if (isIOS || isAndroid) {
+          _showInstallDialog(isIOS);
+        }
+      } catch (e) {
+        debugPrint("Error checking standalone mode: $e");
+      }
+    });
+  }
+
+  void _showInstallDialog(bool isIOS) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: Text(
+            'Install App',
+            style: GoogleFonts.amiri(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Install this app on your device for the best full-screen experience and faster access!',
+                style: GoogleFonts.amiri(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 24),
+              if (isIOS) ...[
+                Icon(Icons.ios_share, size: 48, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 12),
+                Text(
+                  'Tap the Share button below and select\n"Add to Home Screen"',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.amiri(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ] else ...[
+                Icon(Icons.install_mobile, size: 48, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 12),
+                Text(
+                  'Tap the browser menu (⋮) and select\n"Install app" or "Add to Home screen"',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.amiri(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Not Now',
+                style: GoogleFonts.amiri(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   DateTime _getDateForIndex(int index) {

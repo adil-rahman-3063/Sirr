@@ -16,8 +16,8 @@ class NotificationService {
   bool _isInitialized = false;
   late SharedPreferences _prefs;
 
-  // Track which prayers have notifications enabled. By default all are enabled.
-  final Set<String> _enabledPrayers = {'Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'};
+  // Track which prayers have notifications enabled. By default all are disabled.
+  final Set<String> _enabledPrayers = {};
 
   Future<void> init() async {
     if (_isInitialized) return;
@@ -63,6 +63,7 @@ class NotificationService {
       _enabledPrayers.remove(prayerName);
     } else {
       _enabledPrayers.add(prayerName);
+      await requestPermissions();
     }
     await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
   }

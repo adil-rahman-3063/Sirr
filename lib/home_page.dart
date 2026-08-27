@@ -12,11 +12,11 @@ import 'package:sirr/services/api_service.dart';
 import 'package:sirr/providers/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:timezone/data/latest.dart' as tz;
 import 'package:sirr/services/notification_service.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'dart:math' as math;
 import 'package:universal_html/html.dart' as html;
+import 'package:sirr/services/web_permission.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -35,7 +35,6 @@ class _HomePageState extends State<HomePage> {
   
   late PageController _pageController;
   final int _initialPage = 10000;
-  int _currentPageIndex = 10000;
   late Timer _timer;
   DateTime _now = DateTime.now();
   late final DateTime _referenceDate;
@@ -307,16 +306,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Map<String, dynamic>? _getCurrentPrayer(PrayerTimings timings, DateTime date) {
+    final pageTime = DateTime(date.year, date.month, date.day, _now.hour, _now.minute, _now.second);
     final prayers = [
       {'name': 'Fajr', 'time': timings.fajr.dateTime(date)},
-      {'name': 'Sunrise', 'time': timings.sunrise.dateTime(date)},
       {'name': 'Dhuhr', 'time': timings.dhuhr.dateTime(date)},
       {'name': 'Asr', 'time': timings.asr.dateTime(date)},
       {'name': 'Maghrib', 'time': timings.maghrib.dateTime(date)},
       {'name': 'Isha', 'time': timings.isha.dateTime(date)},
     ];
     for (int i = prayers.length - 1; i >= 0; i--) {
-      if (_now.isAfter(prayers[i]['time'] as DateTime)) {
+      if (pageTime.isAfter(prayers[i]['time'] as DateTime)) {
         return prayers[i];
       }
     }
@@ -332,16 +331,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Map<String, dynamic>? _getNextPrayer(PrayerTimings timings, DateTime date) {
+    final pageTime = DateTime(date.year, date.month, date.day, _now.hour, _now.minute, _now.second);
     final prayers = [
       {'name': 'Fajr', 'time': timings.fajr.dateTime(date)},
-      {'name': 'Sunrise', 'time': timings.sunrise.dateTime(date)},
       {'name': 'Dhuhr', 'time': timings.dhuhr.dateTime(date)},
       {'name': 'Asr', 'time': timings.asr.dateTime(date)},
       {'name': 'Maghrib', 'time': timings.maghrib.dateTime(date)},
       {'name': 'Isha', 'time': timings.isha.dateTime(date)},
     ];
     for (var p in prayers) {
-      if (_now.isBefore(p['time'] as DateTime)) {
+      if (pageTime.isBefore(p['time'] as DateTime)) {
         return p;
       }
     }
@@ -397,19 +396,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildNowPrayingCard(PrayerTimings timings, DateTime date) {
-    // Only show "now praying" on today's page
-    final todayString = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final dateString = DateFormat('yyyy-MM-dd').format(date);
-    if (todayString != dateString) {
-      // On non-today pages, show the first prayer of the day
-      final firstPrayer = {'name': 'Fajr', 'time': timings.fajr.dateTime(date)};
-      final secondPrayer = {'name': 'Sunrise', 'time': timings.sunrise.dateTime(date)};
-      final currentName = firstPrayer['name'] as String;
-      final currentTime = DateFormat('h:mm a').format(firstPrayer['time'] as DateTime);
-      final endsTime = "ends ${DateFormat('h:mma').format(secondPrayer['time'] as DateTime).toLowerCase()}";
-      return _buildPrayingCardUI(currentName, currentTime, endsTime, "FIRST PRAYER");
-    }
-
     final current = _getCurrentPrayer(timings, date);
     final next = _getNextPrayer(timings, date);
     if (current == null) return const SizedBox.shrink();
@@ -419,18 +405,21 @@ class _HomePageState extends State<HomePage> {
     final endsTime = next != null ? "ends ${DateFormat('h:mma').format(next['time'] as DateTime).toLowerCase()}" : "";
     
     String? elapsedString;
-    if (todayString == dateString) {
-      final startTime = current['time'] as DateTime;
-      if (_now.isAfter(startTime)) {
-        final elapsed = _now.difference(startTime);
-        final hours = elapsed.inHours.toString().padLeft(2, '0');
-        final mins = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
-        final secs = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
-        elapsedString = "+ $hours:$mins:$secs since Azhaan";
-      }
+    final pageTime = DateTime(date.year, date.month, date.day, _now.hour, _now.minute, _now.second);
+    final startTime = current['time'] as DateTime;
+    if (pageTime.isAfter(startTime)) {
+      final elapsed = pageTime.difference(startTime);
+      final hours = elapsed.inHours.toString().padLeft(2, '0');
+      final mins = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
+      final secs = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+      elapsedString = "+ $hours:$mins:$secs since Azhaan";
     }
 
-    return _buildPrayingCardUI(currentName, currentTime, endsTime, "NOW TIME TO PRAY", elapsedString);
+    final todayString = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final dateString = DateFormat('yyyy-MM-dd').format(date);
+    final label = todayString == dateString ? "NOW TIME TO PRAY" : "PRAYER ACTIVE";
+
+    return _buildPrayingCardUI(currentName, currentTime, endsTime, label, elapsedString);
   }
 
   Widget _buildPrayingCardUI(String prayerName, String time, String endsLabel, String label, [String? elapsedString]) {
@@ -604,7 +593,8 @@ class _HomePageState extends State<HomePage> {
     final next = _getNextPrayer(timings, date);
     if (next == null) return const SizedBox.shrink();
 
-    final diff = (next['time'] as DateTime).difference(_now);
+    final pageTime = DateTime(date.year, date.month, date.day, _now.hour, _now.minute, _now.second);
+    final diff = (next['time'] as DateTime).difference(pageTime);
     if (diff.isNegative) return const SizedBox.shrink();
 
     String twoDigits(int n) => n.toString().padLeft(2, '0');
@@ -620,7 +610,7 @@ class _HomePageState extends State<HomePage> {
     double pct = 0.0;
     if (current != null) {
       final totalWindow = (next['time'] as DateTime).difference(current['time'] as DateTime).inMilliseconds;
-      final elapsed = _now.difference(current['time'] as DateTime).inMilliseconds;
+      final elapsed = pageTime.difference(current['time'] as DateTime).inMilliseconds;
       if (totalWindow > 0) {
         pct = (elapsed / totalWindow).clamp(0.0, 1.0);
       }
@@ -1184,9 +1174,6 @@ class _HomePageState extends State<HomePage> {
     final pageView = PageView.builder(
       controller: _pageController,
       onPageChanged: (index) {
-        setState(() {
-          _currentPageIndex = index;
-        });
         final date = _getDateForIndex(index);
         _loadDataForDate(date);
         _loadDataForDate(date.add(const Duration(days: 1)));
@@ -1317,144 +1304,236 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.85,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-            boxShadow: [
-              BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), blurRadius: 20, spreadRadius: 5),
-            ],
-          ),
-          child: StreamBuilder<dynamic>(
-            stream: kIsWeb ? html.window.onDeviceOrientation : FlutterCompass.events,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(child: Text('Error reading compass: ${snapshot.error}'));
-              }
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              
-              double? deviceHeading;
-              
-              if (kIsWeb) {
-                final html.DeviceOrientationEvent? event = snapshot.data as html.DeviceOrientationEvent?;
-                if (event != null && event.alpha != null) {
-                  // In browser, alpha is usually clockwise rotation.
-                  deviceHeading = 360.0 - event.alpha!.toDouble();
-                }
-              } else {
-                deviceHeading = (snapshot.data as CompassEvent?)?.heading;
-              }
+        return QiblaCompassModal(
+          userLat: userLat,
+          userLon: userLon,
+          qiblaBearing: qiblaBearing,
+        );
+      }
+    );
+  }
+}
 
-              if (deviceHeading == null) {
-                return Center(
+class QiblaCompassModal extends StatefulWidget {
+  final double userLat;
+  final double userLon;
+  final double qiblaBearing;
+
+  const QiblaCompassModal({
+    super.key,
+    required this.userLat,
+    required this.userLon,
+    required this.qiblaBearing,
+  });
+
+  @override
+  State<QiblaCompassModal> createState() => _QiblaCompassModalState();
+}
+
+class _QiblaCompassModalState extends State<QiblaCompassModal> {
+  bool _permissionDenied = false;
+  bool _noSensorDetected = false;
+  Timer? _timeoutTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPermission();
+  }
+
+  Future<void> _initPermission() async {
+    if (kIsWeb) {
+      try {
+        final bool isGranted = await requestWebOrientationPermission();
+        if (!isGranted) {
+          setState(() {
+            _permissionDenied = true;
+          });
+          return;
+        }
+      } catch (e) {
+        debugPrint("Error requesting orientation permission on web: $e");
+      }
+      
+      // Setup a 4-second timeout to check if we get any orientation data at all.
+      // If we don't, we assume the hardware lacks a magnetometer (e.g. desktop).
+      _timeoutTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) {
+          setState(() {
+            _noSensorDetected = true;
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timeoutTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        boxShadow: [
+          BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), blurRadius: 20, spreadRadius: 5),
+        ],
+      ),
+      child: _permissionDenied
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Text(
+                  'Permission denied.\nUnable to access device compass sensor.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.amiri(fontSize: 18, color: Theme.of(context).colorScheme.onSurface),
+                ),
+              ),
+            )
+          : _noSensorDetected
+              ? Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(20.0),
+                    padding: const EdgeInsets.all(24.0),
                     child: Text(
-                      'Compass not available on this device.\nEnsure you are using a secure connection (HTTPS) if on mobile web.', 
+                      'No orientation sensors detected on this device.\nNote: standard desktop computers do not have compasses.',
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.amiri(fontSize: 18, color: Theme.of(context).colorScheme.onSurface)
+                      style: GoogleFonts.amiri(fontSize: 18, color: Theme.of(context).colorScheme.onSurface),
                     ),
-                  )
-                );
-              }
+                  ),
+                )
+              : StreamBuilder<dynamic>(
+                  stream: kIsWeb ? html.window.onDeviceOrientation : FlutterCompass.events,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Error reading compass: ${snapshot.error}'));
+                    }
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    
+                    double? deviceHeading;
+                    
+                    if (kIsWeb) {
+                      final html.DeviceOrientationEvent? event = snapshot.data as html.DeviceOrientationEvent?;
+                      if (event != null && event.alpha != null) {
+                        // Cancel timeout since we got data!
+                        _timeoutTimer?.cancel();
+                        deviceHeading = 360.0 - event.alpha!.toDouble();
+                      }
+                    } else {
+                      deviceHeading = (snapshot.data as CompassEvent?)?.heading;
+                    }
 
-              // Calculate rotation to point to Qibla
-              final double rotationAngle = (qiblaBearing - deviceHeading) * (math.pi / 180.0);
-              
-              // Helper to get cardinal direction
-              String getCardinalDirection(double angle) {
-                    if (angle >= 337.5 || angle < 22.5) return 'N';
-                    if (angle >= 22.5 && angle < 67.5) return 'NE';
-                    if (angle >= 67.5 && angle < 112.5) return 'E';
-                    if (angle >= 112.5 && angle < 157.5) return 'SE';
-                    if (angle >= 157.5 && angle < 202.5) return 'S';
-                    if (angle >= 202.5 && angle < 247.5) return 'SW';
-                    if (angle >= 247.5 && angle < 292.5) return 'W';
-                    if (angle >= 292.5 && angle < 337.5) return 'NW';
-                    return '';
-                  }
-
-                  return Stack(
-                    children: [
-                      // Top Heading
-                      Positioned(
-                        top: 60,
-                        left: 0,
-                        right: 0,
-                        child: Center(
+                    if (deviceHeading == null) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
                           child: Text(
-                            '${deviceHeading.toStringAsFixed(0)}° ${getCardinalDirection(deviceHeading)}',
-                            style: GoogleFonts.amiri(
-                              fontSize: 48,
-                              fontWeight: FontWeight.w300,
+                            'Compass not available on this device.\nEnsure you are using a secure connection (HTTPS) if on mobile web.', 
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.amiri(fontSize: 18, color: Theme.of(context).colorScheme.onSurface)
+                          ),
+                        )
+                      );
+                    }
+
+                    // Calculate rotation to point to Qibla
+                    final double rotationAngle = (widget.qiblaBearing - deviceHeading) * (math.pi / 180.0);
+                    
+                    // Helper to get cardinal direction
+                    String getCardinalDirection(double angle) {
+                      if (angle >= 337.5 || angle < 22.5) return 'N';
+                      if (angle >= 22.5 && angle < 67.5) return 'NE';
+                      if (angle >= 67.5 && angle < 112.5) return 'E';
+                      if (angle >= 112.5 && angle < 157.5) return 'SE';
+                      if (angle >= 157.5 && angle < 202.5) return 'S';
+                      if (angle >= 202.5 && angle < 247.5) return 'SW';
+                      if (angle >= 247.5 && angle < 292.5) return 'W';
+                      if (angle >= 292.5 && angle < 337.5) return 'NW';
+                      return '';
+                    }
+
+                    return Stack(
+                      children: [
+                        // Top Heading
+                        Positioned(
+                          top: 60,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: Text(
+                              '${deviceHeading.toStringAsFixed(0)}° ${getCardinalDirection(deviceHeading)}',
+                              style: GoogleFonts.amiri(
+                                fontSize: 48,
+                                fontWeight: FontWeight.w300,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        ),
+                        
+                        // Right Action Icons
+                        Positioned(
+                          top: 20,
+                          right: 20,
+                          child: Column(
+                            children: [
+                              IconButton(icon: Icon(Icons.location_on, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                              IconButton(icon: Icon(Icons.settings, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                              IconButton(icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                              IconButton(icon: Icon(Icons.dark_mode, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                              IconButton(icon: Icon(Icons.info, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
+                            ],
+                          ),
+                        ),
+
+                        // Center Qibla Pointer
+                        Center(
+                          child: Transform.rotate(
+                            angle: rotationAngle,
+                            child: Icon(
+                              Icons.navigation,
+                              size: 200,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                         ),
-                      ),
-                      
-                      // Right Action Icons
-                      Positioned(
-                        top: 20,
-                        right: 20,
-                        child: Column(
-                          children: [
-                            IconButton(icon: Icon(Icons.location_on, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                            IconButton(icon: Icon(Icons.settings, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                            IconButton(icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                            IconButton(icon: Icon(Icons.dark_mode, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                            IconButton(icon: Icon(Icons.info, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                          ],
-                        ),
-                      ),
 
-                      // Center Qibla Pointer
-                      Center(
-                        child: Transform.rotate(
-                          angle: rotationAngle,
-                          child: Icon(
-                            Icons.navigation,
-                            size: 200,
-                            color: Theme.of(context).colorScheme.onSurface,
+                        // Bottom Coordinates
+                        Positioned(
+                          bottom: 40,
+                          left: 0,
+                          right: 0,
+                          child: Column(
+                            children: [
+                              Text(
+                                '${widget.userLat.toStringAsFixed(4)}°N   ${widget.userLon.toStringAsFixed(4)}°E',
+                                style: GoogleFonts.amiri(
+                                  fontSize: 14,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Qibla: ${widget.qiblaBearing.toStringAsFixed(1)}°',
+                                style: GoogleFonts.amiri(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-
-                      // Bottom Coordinates
-                      Positioned(
-                        bottom: 40,
-                        left: 0,
-                        right: 0,
-                        child: Column(
-                          children: [
-                            Text(
-                              '${userLat.toStringAsFixed(4)}°N   ${userLon.toStringAsFixed(4)}°E',
-                              style: GoogleFonts.amiri(
-                                fontSize: 14,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Qibla: ${qiblaBearing.toStringAsFixed(1)}°',
-                              style: GoogleFonts.amiri(
-                                fontSize: 12,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-        );
-      }
+                      ],
+                    );
+                  },
+                ),
     );
   }
 }

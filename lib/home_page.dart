@@ -1263,7 +1263,12 @@ class _HomePageState extends State<HomePage> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: Theme.of(context).colorScheme.primary,
         child: const Icon(Icons.explore, color: Colors.white),
-        onPressed: _showCompassModal,
+        onPressed: () async {
+          if (kIsWeb) {
+            await requestWebOrientationPermission();
+          }
+          _showCompassModal();
+        },
       ),
     );
   }

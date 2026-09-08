@@ -53,6 +53,16 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           _now = newNow;
         });
+
+        // Update dynamic theme based on current live prayer time
+        if (_cache.isNotEmpty) {
+          final todayString = DateFormat('yyyy-MM-dd').format(newNow);
+          final timings = _cache[todayString];
+          if (timings != null) {
+            Provider.of<ThemeProvider>(context, listen: false)
+                .updatePeriod(newNow, timings.toDateTimeMap(newNow));
+          }
+        }
         
         // Trigger web notifications if exact minute starts
         if (newNow.second == 0 && _cache.isNotEmpty) {

@@ -27,19 +27,21 @@ class ThemeProvider with ChangeNotifier {
     final maghrib = prayerTimes['Maghrib'];
     final isha = prayerTimes['Isha'];
     
-    if (fajr == null || sunrise == null || asr == null || maghrib == null || isha == null) {
+    if (fajr == null || asr == null || maghrib == null || isha == null) {
       return;
     }
 
+    final morningStart = sunrise ?? fajr.add(const Duration(hours: 1, minutes: 30));
+
     PrayerPeriod newPeriod;
     
-    if (now.isAfter(isha) || now.isBefore(fajr)) {
+    if (now.isBefore(fajr) || !now.isBefore(isha)) {
       newPeriod = PrayerPeriod.isha;
-    } else if (now.isAfter(fajr) && now.isBefore(sunrise)) {
+    } else if (!now.isBefore(fajr) && now.isBefore(morningStart)) {
       newPeriod = PrayerPeriod.fajr;
-    } else if (now.isAfter(sunrise) && now.isBefore(asr)) {
+    } else if (!now.isBefore(morningStart) && now.isBefore(asr)) {
       newPeriod = PrayerPeriod.morning;
-    } else if (now.isAfter(asr) && now.isBefore(maghrib)) {
+    } else if (!now.isBefore(asr) && now.isBefore(maghrib)) {
       newPeriod = PrayerPeriod.asr;
     } else {
       newPeriod = PrayerPeriod.maghrib;

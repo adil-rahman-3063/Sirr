@@ -82,14 +82,16 @@ class PrayerTimings {
     required this.hijriDate,
   });
 
-  Map<String, DateTime> toDateTimeMap() {
-    final now = DateTime.now();
+  Map<String, DateTime> toDateTimeMap([DateTime? baseDate]) {
+    final base = baseDate ?? DateTime.now();
     return {
-      'Fajr': fajr.dateTime(now),
-      'Dhuhr': dhuhr.dateTime(now),
-      'Asr': asr.dateTime(now),
-      'Maghrib': maghrib.dateTime(now),
-      'Isha': isha.dateTime(now),
+      'Fajr': fajr.dateTime(base),
+      'Sunrise': sunrise.dateTime(base),
+      'Dhuhr': dhuhr.dateTime(base),
+      'Asr': asr.dateTime(base),
+      'Sunset': sunset.dateTime(base),
+      'Maghrib': maghrib.dateTime(base),
+      'Isha': isha.dateTime(base),
     };
   }
 

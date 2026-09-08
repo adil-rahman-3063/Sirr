@@ -818,6 +818,35 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _handleNotificationToggle(String prayerName) async {
+    final willEnable = !NotificationService().isNotificationEnabled(prayerName);
+    await NotificationService().toggleNotification(prayerName);
+    
+    if (willEnable && kIsWeb && mounted) {
+      try {
+        final bool isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;
+        final userAgent = html.window.navigator.userAgent.toLowerCase();
+        final isIOS = userAgent.contains('iphone') || userAgent.contains('ipad') || userAgent.contains('ipod');
+        
+        if (isIOS && !isStandalone) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'To get notifications on iPhone, tap Share (⎋) and select "Add to Home Screen".',
+                style: GoogleFonts.amiri(),
+              ),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      } catch (_) {}
+    }
+    
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Widget _buildPrayerListItem(String name, DateTime time, IconData icon, bool isActive, {bool isLast = false}) {
     if (isActive) {
       return Container(
@@ -847,10 +876,7 @@ class _HomePageState extends State<HomePage> {
                   style: GoogleFonts.amiri(fontSize: 14, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onPrimary),
                 ),
                 GestureDetector(
-                  onTap: () async {
-                    await NotificationService().toggleNotification(name);
-                    setState(() {});
-                  },
+                  onTap: () => _handleNotificationToggle(name),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 500),
                     transitionBuilder: (Widget child, Animation<double> animation) {
@@ -897,10 +923,7 @@ class _HomePageState extends State<HomePage> {
                 style: GoogleFonts.amiri(fontSize: 14, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
               GestureDetector(
-                onTap: () async {
-                  await NotificationService().toggleNotification(name);
-                  setState(() {});
-                },
+                onTap: () => _handleNotificationToggle(name),
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 500),
                   transitionBuilder: (Widget child, Animation<double> animation) {
@@ -1287,9 +1310,9 @@ class _HomePageState extends State<HomePage> {
       userLon = _currentPosition!.longitude;
     }
     
-    // Mecca coordinates
-    const double meccaLat = 21.422487;
-    const double meccaLon = 39.826208;
+    // Kaaba / Mecca coordinates
+    const double meccaLat = 21.42377783053372;
+    const double meccaLon = 39.825402612333306;
     
     // Calculate Qibla Bearing
     final double lat1 = userLat * math.pi / 180.0;
@@ -1486,14 +1509,15 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> {
                         Positioned(
                           top: 20,
                           right: 20,
-                          child: Column(
-                            children: [
-                              IconButton(icon: Icon(Icons.location_on, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                              IconButton(icon: Icon(Icons.settings, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                              IconButton(icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                              IconButton(icon: Icon(Icons.dark_mode, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                              IconButton(icon: Icon(Icons.info, color: Theme.of(context).colorScheme.onSurface), onPressed: () {}),
-                            ],
+                          child: IconButton(
+                            icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onSurface),
+                            onPressed: () {
+                              setState(() {
+                                _permissionDenied = false;
+                                _noSensorDetected = false;
+                              });
+                              _initPermission();
+                            },
                           ),
                         ),
 

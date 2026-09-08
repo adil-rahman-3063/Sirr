@@ -21,6 +21,7 @@
   <meta name="description" content="A beautifully designed Islamic prayer times and Qibla compass app.">
 
   <!-- iOS meta tags & icons -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="سِرّ">
@@ -45,6 +46,55 @@
         }
       }
       return true;
+    };
+
+    window.requestWebNotificationPermission = async function() {
+      if (!('Notification' in window)) {
+        return false;
+      }
+      try {
+        const permission = await Notification.requestPermission();
+        return permission === 'granted';
+      } catch (e) {
+        console.error("Error requesting notification permission:", e);
+        return false;
+      }
+    };
+
+    window.showWebNotification = async function(title, body, icon) {
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        return false;
+      }
+      const options = {
+        body: body || '',
+        icon: icon || 'icons/Icon-192.png',
+        badge: 'icons/Icon-192.png',
+        vibrate: [200, 100, 200],
+        tag: 'prayer-reminder',
+        renotify: true
+      };
+
+      // Try service worker first (REQUIRED on Android Chrome / mobile browsers)
+      if ('serviceWorker' in navigator) {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          if (reg && reg.showNotification) {
+            await reg.showNotification(title, options);
+            return true;
+          }
+        } catch (swErr) {
+          console.log("ServiceWorker showNotification fallback:", swErr);
+        }
+      }
+
+      // Fallback to standard constructor (Desktop browsers)
+      try {
+        new Notification(title, options);
+        return true;
+      } catch (err) {
+        console.error("Failed to show web notification:", err);
+        return false;
+      }
     };
   </script>
   <script src="flutter_bootstrap.js" async></script>

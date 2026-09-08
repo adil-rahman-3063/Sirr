@@ -15,3 +15,31 @@ Future<bool> requestWebOrientationPermission() async {
   }
   return true;
 }
+
+Future<bool> requestWebNotificationPermission() async {
+  try {
+    final hasRequest = js.context.hasProperty('requestWebNotificationPermission');
+    if (hasRequest) {
+      final dynamic resultPromise = js.context.callMethod('requestWebNotificationPermission');
+      final bool isGranted = await js_util.promiseToFuture(resultPromise);
+      return isGranted;
+    }
+  } catch (e) {
+    // Suppress error
+  }
+  return false;
+}
+
+Future<bool> showWebNotification(String title, String body, [String? icon]) async {
+  try {
+    final hasShow = js.context.hasProperty('showWebNotification');
+    if (hasShow) {
+      final dynamic resultPromise = js.context.callMethod('showWebNotification', [title, body, icon ?? 'icons/Icon-192.png']);
+      final bool result = await js_util.promiseToFuture(resultPromise);
+      return result;
+    }
+  } catch (e) {
+    // Suppress error
+  }
+  return false;
+}

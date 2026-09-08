@@ -5,7 +5,7 @@ import 'package:sirr/models/prayer_time_model.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:universal_html/html.dart' as html;
+import 'package:sirr/services/web_permission.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -15,6 +15,7 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
   late SharedPreferences _prefs;
+  Map<String, PrayerTimings>? _lastCache;
 
   // Track which prayers have notifications enabled. By default all are disabled.
   final Set<String> _enabledPrayers = {};
@@ -27,20 +28,47 @@ class NotificationService {
 
     if (!kIsWeb) {
       tz.initializeTimeZones();
+      try {
+        final now = DateTime.now();
+        for (final loc in tz.timeZoneDatabase.locations.values) {
+          if (loc.currentTimeZone.offset == now.timeZoneOffset) {
+            tz.setLocalLocation(loc);
+            break;
+          }
+        }
+      } catch (e) {
+        debugPrint("Timezone configuration error: $e");
+      }
 
       const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
       const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings(
-          requestAlertPermission: false,
-          requestBadgePermission: false,
-          requestSoundPermission: false,
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
       );
       const InitializationSettings initializationSettings = InitializationSettings(
-          android: initializationSettingsAndroid,
-          iOS: initializationSettingsIOS);
+        android: initializationSettingsAndroid,
+        iOS: initializationSettingsIOS,
+      );
 
       await _flutterLocalNotificationsPlugin.initialize(
         settings: initializationSettings,
       );
+
+      final androidImplementation = _flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (androidImplementation != null) {
+        await androidImplementation.createNotificationChannel(
+          const AndroidNotificationChannel(
+            'prayer_channel_id',
+            'Prayer Times',
+            description: 'Notifications for daily prayer times',
+            importance: Importance.max,
+            playSound: true,
+            enableVibration: true,
+          ),
+        );
+      }
     }
     
     _isInitialized = true;
@@ -66,13 +94,16 @@ class NotificationService {
       await requestPermissions();
     }
     await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
+    
+    // Automatically re-schedule whenever a prayer is toggled
+    if (_lastCache != null) {
+      await schedulePrayerNotifications(_lastCache!);
+    }
   }
 
   Future<void> requestPermissions() async {
     if (kIsWeb) {
-      if (html.Notification.permission != 'granted') {
-        await html.Notification.requestPermission();
-      }
+      await requestWebNotificationPermission();
       return;
     }
     
@@ -95,13 +126,12 @@ class NotificationService {
   // Triggered manually in foreground for web (and potentially mobile if not scheduled)
   void triggerForegroundNotification(String title, String body) {
     if (kIsWeb) {
-      if (html.Notification.permission == 'granted') {
-        html.Notification(title, body: body, icon: 'icons/Icon-192.png');
-      }
+      showWebNotification(title, body, 'icons/Icon-192.png');
     }
   }
 
   Future<void> schedulePrayerNotifications(Map<String, PrayerTimings> cache) async {
+    _lastCache = cache;
     if (!_isInitialized || kIsWeb) return;
     
     await _flutterLocalNotificationsPlugin.cancelAll();
@@ -160,11 +190,23 @@ class NotificationService {
         scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
         notificationDetails: const NotificationDetails(
             android: AndroidNotificationDetails(
-                'prayer_channel_id', 'Prayer Times',
+                'prayer_channel_id',
+                'Prayer Times',
                 channelDescription: 'Notifications for daily prayer times',
                 importance: Importance.max,
                 priority: Priority.high,
-                icon: '@mipmap/ic_launcher')),
+                icon: '@mipmap/ic_launcher',
+                playSound: true,
+                enableVibration: true,
+                visibility: NotificationVisibility.public,
+            ),
+            iOS: DarwinNotificationDetails(
+                presentAlert: true,
+                presentBadge: true,
+                presentSound: true,
+                sound: 'default',
+                interruptionLevel: InterruptionLevel.timeSensitive,
+            )),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle);
   }
 }

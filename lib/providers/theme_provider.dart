@@ -86,7 +86,6 @@ class ThemeProvider with ChangeNotifier {
           secondaryText: const Color(0xFFD9C4CE),
         );
       case PrayerPeriod.isha:
-      default:
         return _buildTheme(
           background: const Color(0xFF12121A),
           surface: const Color(0xFF1C1C26),

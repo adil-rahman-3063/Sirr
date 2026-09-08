@@ -33,7 +33,7 @@ class _SplashScreenState extends State<SplashScreen> {
       backgroundColor: const Color(0xFF12121A), // Deep charcoal/black from Isha theme
       body: Center(
         child: Image.asset(
-          'logo.png',
+          'assets/logo.png',
           width: 120,
           height: 120,
         ),

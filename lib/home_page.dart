@@ -17,6 +17,7 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'dart:math' as math;
 import 'package:universal_html/html.dart' as html;
 import 'package:sirr/services/web_permission.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -945,6 +946,48 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildFooter() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10.0, bottom: 30.0),
+      child: Center(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () async {
+            final Uri url = Uri.parse('https://adilrahman.cc');
+            if (await canLaunchUrl(url)) {
+              await launchUrl(url, mode: LaunchMode.externalApplication);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Developed by ',
+                  style: GoogleFonts.amiri(
+                    fontSize: 14,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  ),
+                ),
+                Text(
+                  'Adil Rahman',
+                  style: GoogleFonts.amiri(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFloatingDateOverlay() {
     return AnimatedBuilder(
       animation: _pageController,
@@ -1248,6 +1291,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ],
                     ),
+                    _buildFooter(),
                   ],
                 ),
               ),
@@ -1263,6 +1307,7 @@ class _HomePageState extends State<HomePage> {
                 _buildCountdownCard(timings, targetDate),
                 _buildNextPrayerDetailCard(timings, targetDate),
                 _buildPrayerList(timings, targetDate),
+                _buildFooter(),
                 const SizedBox(height: 40),
               ],
             ),

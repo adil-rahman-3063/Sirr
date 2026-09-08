@@ -9,3 +9,7 @@ Future<bool> requestWebNotificationPermission() async {
 Future<bool> showWebNotification(String title, String body, [String? icon]) async {
   return true;
 }
+
+double? getWebCompassHeading() {
+  return null;
+}

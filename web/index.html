@@ -35,6 +35,27 @@
 </head>
 <body>
   <script>
+    window.currentDeviceHeading = null;
+    function handleCompassEvent(e) {
+      if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+        window.currentDeviceHeading = e.webkitCompassHeading;
+      } else if (e.alpha !== null) {
+        let h = 360 - e.alpha;
+        if (h < 0) h += 360;
+        if (h >= 360) h -= 360;
+        window.currentDeviceHeading = h;
+      }
+    }
+
+    if ('ondeviceorientationabsolute' in window) {
+      window.addEventListener('deviceorientationabsolute', handleCompassEvent, true);
+    }
+    window.addEventListener('deviceorientation', handleCompassEvent, true);
+
+    window.getDeviceCompassHeading = function() {
+      return window.currentDeviceHeading;
+    };
+
     window.requestDeviceOrientation = async function() {
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {

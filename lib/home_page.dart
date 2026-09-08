@@ -1413,14 +1413,21 @@ class QiblaCompassModal extends StatefulWidget {
   State<QiblaCompassModal> createState() => _QiblaCompassModalState();
 }
 
-class _QiblaCompassModalState extends State<QiblaCompassModal> {
+class _QiblaCompassModalState extends State<QiblaCompassModal> with SingleTickerProviderStateMixin {
   bool _permissionDenied = false;
   bool _noSensorDetected = false;
   Timer? _timeoutTimer;
+  double _lastSmoothedAngle = 0.0;
+  bool _isCalibrating = false;
+  late AnimationController _calibrationController;
 
   @override
   void initState() {
     super.initState();
+    _calibrationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
     _initPermission();
   }
 
@@ -1438,10 +1445,8 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> {
         debugPrint("Error requesting orientation permission on web: $e");
       }
       
-      // Setup a 4-second timeout to check if we get any orientation data at all.
-      // If we don't, we assume the hardware lacks a magnetometer (e.g. desktop).
       _timeoutTimer = Timer(const Duration(seconds: 4), () {
-        if (mounted) {
+        if (mounted && getWebCompassHeading() == null) {
           setState(() {
             _noSensorDetected = true;
           });
@@ -1450,174 +1455,575 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> {
     }
   }
 
+  Future<void> _calibrateCompass() async {
+    setState(() {
+      _isCalibrating = true;
+      _permissionDenied = false;
+      _noSensorDetected = false;
+    });
+
+    _calibrationController.forward(from: 0.0);
+
+    if (kIsWeb) {
+      await requestWebOrientationPermission();
+    }
+
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    if (mounted) {
+      setState(() {
+        _isCalibrating = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✦ Calibrated • Pointing to Kaaba (${widget.qiblaBearing.toStringAsFixed(1)}°)',
+            style: GoogleFonts.amiri(fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _timeoutTimer?.cancel();
+    _calibrationController.dispose();
     super.dispose();
+  }
+
+  double _calculateShortestAngle(double targetAngle, double currentAngle) {
+    double diff = (targetAngle - currentAngle) % (2 * math.pi);
+    if (diff < -math.pi) diff += 2 * math.pi;
+    if (diff > math.pi) diff -= 2 * math.pi;
+    return currentAngle + diff;
+  }
+
+  String _getCardinalDirection(double angle) {
+    if (angle >= 337.5 || angle < 22.5) return 'N';
+    if (angle >= 22.5 && angle < 67.5) return 'NE';
+    if (angle >= 67.5 && angle < 112.5) return 'E';
+    if (angle >= 112.5 && angle < 157.5) return 'SE';
+    if (angle >= 157.5 && angle < 202.5) return 'S';
+    if (angle >= 202.5 && angle < 247.5) return 'SW';
+    if (angle >= 247.5 && angle < 292.5) return 'W';
+    if (angle >= 292.5 && angle < 337.5) return 'NW';
+    return '';
+  }
+
+  String _getDistanceToMecca() {
+    const double meccaLat = 21.42377783053372;
+    const double meccaLon = 39.825402612333306;
+    const double earthRadiusKm = 6371.0;
+
+    final double dLat = (meccaLat - widget.userLat) * math.pi / 180.0;
+    final double dLon = (meccaLon - widget.userLon) * math.pi / 180.0;
+    final double lat1 = widget.userLat * math.pi / 180.0;
+    final double lat2 = meccaLat * math.pi / 180.0;
+
+    final double a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) * math.cos(lat2) * math.sin(dLon / 2) * math.sin(dLon / 2);
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    final double distance = earthRadiusKm * c;
+
+    final formatter = NumberFormat('#,###');
+    return '${formatter.format(distance.round())} km to Kaaba';
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
+    final onSurfaceColor = theme.colorScheme.onSurface;
+    final onSurfaceVariant = theme.colorScheme.onSurfaceVariant;
+
     return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
+      height: MediaQuery.of(context).size.height * 0.88,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: [
-          BoxShadow(color: Theme.of(context).shadowColor.withValues(alpha: 0.2), blurRadius: 20, spreadRadius: 5),
+          BoxShadow(
+            color: theme.shadowColor.withValues(alpha: 0.25),
+            blurRadius: 25,
+            spreadRadius: 6,
+          ),
         ],
       ),
-      child: _permissionDenied
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Text(
-                  'Permission denied.\nUnable to access device compass sensor.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.amiri(fontSize: 18, color: Theme.of(context).colorScheme.onSurface),
+      child: Column(
+        children: [
+          // Drag handle
+          const SizedBox(height: 12),
+          Container(
+            width: 42,
+            height: 4.5,
+            decoration: BoxDecoration(
+              color: onSurfaceVariant.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          
+          // Header Bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Qibla Compass',
+                      style: GoogleFonts.amiri(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: onSurfaceColor,
+                      ),
+                    ),
+                    Text(
+                      'Kaaba, Masjid al-Haram',
+                      style: GoogleFonts.amiri(
+                        fontSize: 13,
+                        color: onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            )
-          : _noSensorDetected
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Text(
-                      'No orientation sensors detected on this device.\nNote: standard desktop computers do not have compasses.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.amiri(fontSize: 18, color: Theme.of(context).colorScheme.onSurface),
+                RotationTransition(
+                  turns: _calibrationController,
+                  child: IconButton.filledTonal(
+                    icon: Icon(Icons.refresh, color: primaryColor),
+                    tooltip: 'Calibrate Compass',
+                    onPressed: _calibrateCompass,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Main Compass Area
+          Expanded(
+            child: _permissionDenied
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Text(
+                        'Compass permission denied.\nPlease enable device motion / compass access in your settings.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.amiri(fontSize: 17, color: onSurfaceColor),
+                      ),
+                    ),
+                  )
+                : _noSensorDetected
+                    ? _buildStaticCompassView(onSurfaceColor, primaryColor)
+                    : StreamBuilder<dynamic>(
+                        stream: kIsWeb ? html.window.onDeviceOrientation : FlutterCompass.events,
+                        builder: (context, snapshot) {
+                          double? deviceHeading;
+
+                          if (kIsWeb) {
+                            final webHeading = getWebCompassHeading();
+                            if (webHeading != null) {
+                              _timeoutTimer?.cancel();
+                              deviceHeading = webHeading;
+                            } else {
+                              final html.DeviceOrientationEvent? event = snapshot.data as html.DeviceOrientationEvent?;
+                              if (event != null && event.alpha != null) {
+                                _timeoutTimer?.cancel();
+                                deviceHeading = (360.0 - event.alpha!.toDouble()) % 360.0;
+                              }
+                            }
+                          } else {
+                            deviceHeading = (snapshot.data as CompassEvent?)?.heading;
+                          }
+
+                          if (deviceHeading == null) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            return _buildStaticCompassView(onSurfaceColor, primaryColor);
+                          }
+
+                          // Calculate shortest rotation angle
+                          final double rawRotationAngle = (widget.qiblaBearing - deviceHeading) * (math.pi / 180.0);
+                          _lastSmoothedAngle = _calculateShortestAngle(rawRotationAngle, _lastSmoothedAngle);
+
+                          double angleDiffDeg = (widget.qiblaBearing - deviceHeading) % 360.0;
+                          if (angleDiffDeg > 180.0) angleDiffDeg -= 360.0;
+                          if (angleDiffDeg < -180.0) angleDiffDeg += 360.0;
+                          final bool isFacingKaaba = angleDiffDeg.abs() <= 5.0;
+
+                          return _buildActiveCompassView(
+                            deviceHeading: deviceHeading,
+                            targetAngle: _lastSmoothedAngle,
+                            isFacingKaaba: isFacingKaaba,
+                            angleDiffDeg: angleDiffDeg,
+                            primaryColor: primaryColor,
+                            onSurfaceColor: onSurfaceColor,
+                          );
+                        },
+                      ),
+          ),
+
+          // Bottom Details & Coordinates
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            margin: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.08)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${widget.userLat.toStringAsFixed(4)}°N  ${widget.userLon.toStringAsFixed(4)}°E',
+                      style: GoogleFonts.amiri(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: onSurfaceColor,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _getDistanceToMecca(),
+                      style: GoogleFonts.amiri(
+                        fontSize: 12,
+                        color: onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Qibla: ${widget.qiblaBearing.toStringAsFixed(1)}°',
+                    style: GoogleFonts.amiri(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
                     ),
                   ),
-                )
-              : StreamBuilder<dynamic>(
-                  stream: kIsWeb ? html.window.onDeviceOrientation : FlutterCompass.events,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Error reading compass: ${snapshot.error}'));
-                    }
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    
-                    double? deviceHeading;
-                    
-                    if (kIsWeb) {
-                      final html.DeviceOrientationEvent? event = snapshot.data as html.DeviceOrientationEvent?;
-                      if (event != null && event.alpha != null) {
-                        // Cancel timeout since we got data!
-                        _timeoutTimer?.cancel();
-                        deviceHeading = 360.0 - event.alpha!.toDouble();
-                      }
-                    } else {
-                      deviceHeading = (snapshot.data as CompassEvent?)?.heading;
-                    }
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                    if (deviceHeading == null) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20.0),
-                          child: Text(
-                            'Compass not available on this device.\nEnsure you are using a secure connection (HTTPS) if on mobile web.', 
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.amiri(fontSize: 18, color: Theme.of(context).colorScheme.onSurface)
+  Widget _buildActiveCompassView({
+    required double deviceHeading,
+    required double targetAngle,
+    required bool isFacingKaaba,
+    required double angleDiffDeg,
+    required Color primaryColor,
+    required Color onSurfaceColor,
+  }) {
+    final activeColor = isFacingKaaba ? const Color(0xFF00E676) : primaryColor;
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Heading & Status Badge
+        Text(
+          '${deviceHeading.toStringAsFixed(0)}° ${_getCardinalDirection(deviceHeading)}',
+          style: GoogleFonts.amiri(
+            fontSize: 42,
+            fontWeight: FontWeight.w300,
+            color: onSurfaceColor,
+            letterSpacing: 1.0,
+          ),
+        ),
+        const SizedBox(height: 6),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: isFacingKaaba
+                ? const Color(0xFF00E676).withValues(alpha: 0.18)
+                : onSurfaceColor.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isFacingKaaba
+                  ? const Color(0xFF00E676).withValues(alpha: 0.5)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Text(
+            isFacingKaaba
+                ? '✦ Facing the Kaaba ✦'
+                : 'Turn ${angleDiffDeg > 0 ? 'Right' : 'Left'} by ${angleDiffDeg.abs().toStringAsFixed(0)}°',
+            style: GoogleFonts.amiri(
+              fontSize: 14,
+              fontWeight: isFacingKaaba ? FontWeight.bold : FontWeight.w500,
+              color: isFacingKaaba ? const Color(0xFF00E676) : onSurfaceColor.withValues(alpha: 0.8),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // Compass Rose with Smooth Dial & Kaaba Pointer
+        Expanded(
+          child: Center(
+            child: SizedBox(
+              width: 270,
+              height: 270,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Rotating Compass Dial
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(end: -deviceHeading * (math.pi / 180.0)),
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, dialAngle, child) {
+                      return Transform.rotate(
+                        angle: dialAngle,
+                        child: CustomPaint(
+                          size: const Size(270, 270),
+                          painter: CompassDialPainter(
+                            primaryColor: primaryColor,
+                            textColor: onSurfaceColor,
+                            accentColor: activeColor,
+                            qiblaBearing: widget.qiblaBearing,
+                            isAligned: isFacingKaaba,
                           ),
-                        )
-                      );
-                    }
-
-                    // Calculate rotation to point to Qibla
-                    final double rotationAngle = (widget.qiblaBearing - deviceHeading) * (math.pi / 180.0);
-                    
-                    // Helper to get cardinal direction
-                    String getCardinalDirection(double angle) {
-                      if (angle >= 337.5 || angle < 22.5) return 'N';
-                      if (angle >= 22.5 && angle < 67.5) return 'NE';
-                      if (angle >= 67.5 && angle < 112.5) return 'E';
-                      if (angle >= 112.5 && angle < 157.5) return 'SE';
-                      if (angle >= 157.5 && angle < 202.5) return 'S';
-                      if (angle >= 202.5 && angle < 247.5) return 'SW';
-                      if (angle >= 247.5 && angle < 292.5) return 'W';
-                      if (angle >= 292.5 && angle < 337.5) return 'NW';
-                      return '';
-                    }
-
-                    return Stack(
-                      children: [
-                        // Top Heading
-                        Positioned(
-                          top: 60,
-                          left: 0,
-                          right: 0,
-                          child: Center(
-                            child: Text(
-                              '${deviceHeading.toStringAsFixed(0)}° ${getCardinalDirection(deviceHeading)}',
-                              style: GoogleFonts.amiri(
-                                fontSize: 48,
-                                fontWeight: FontWeight.w300,
-                                color: Theme.of(context).colorScheme.onSurface,
-                              ),
-                            ),
-                          ),
-                        ),
-                        
-                        // Right Action Icons
-                        Positioned(
-                          top: 20,
-                          right: 20,
-                          child: IconButton(
-                            icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onSurface),
-                            onPressed: () {
-                              setState(() {
-                                _permissionDenied = false;
-                                _noSensorDetected = false;
-                              });
-                              _initPermission();
-                            },
-                          ),
-                        ),
-
-                        // Center Qibla Pointer
-                        Center(
-                          child: Transform.rotate(
-                            angle: rotationAngle,
-                            child: Icon(
-                              Icons.navigation,
-                              size: 200,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                          ),
-                        ),
-
-                        // Bottom Coordinates
-                        Positioned(
-                          bottom: 40,
-                          left: 0,
-                          right: 0,
-                          child: Column(
+                          child: Stack(
                             children: [
-                              Text(
-                                '${widget.userLat.toStringAsFixed(4)}°N   ${widget.userLon.toStringAsFixed(4)}°E',
-                                style: GoogleFonts.amiri(
-                                  fontSize: 14,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  letterSpacing: 1.5,
+                              // North Marker
+                              Align(
+                                alignment: Alignment.topCenter,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 14.0),
+                                  child: Text('N', style: GoogleFonts.amiri(fontWeight: FontWeight.bold, fontSize: 16, color: const Color(0xFFFF5252))),
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Qibla: ${widget.qiblaBearing.toStringAsFixed(1)}°',
-                                style: GoogleFonts.amiri(
-                                  fontSize: 12,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              // East Marker
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 14.0),
+                                  child: Text('E', style: GoogleFonts.amiri(fontWeight: FontWeight.bold, fontSize: 14, color: onSurfaceColor.withValues(alpha: 0.7))),
+                                ),
+                              ),
+                              // South Marker
+                              Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 14.0),
+                                  child: Text('S', style: GoogleFonts.amiri(fontWeight: FontWeight.bold, fontSize: 14, color: onSurfaceColor.withValues(alpha: 0.7))),
+                                ),
+                              ),
+                              // West Marker
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: 14.0),
+                                  child: Text('W', style: GoogleFonts.amiri(fontWeight: FontWeight.bold, fontSize: 14, color: onSurfaceColor.withValues(alpha: 0.7))),
+                                ),
+                              ),
+                              // Kaaba Emblem on Dial Ring
+                              Transform.rotate(
+                                angle: widget.qiblaBearing * (math.pi / 180.0),
+                                child: Align(
+                                  alignment: Alignment.topCenter,
+                                  child: Container(
+                                    margin: const EdgeInsets.only(top: 2),
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: isFacingKaaba ? const Color(0xFF00E676) : primaryColor,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: (isFacingKaaba ? const Color(0xFF00E676) : primaryColor).withValues(alpha: 0.5),
+                                          blurRadius: 8,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(Icons.mosque, size: 14, color: Colors.white),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
+
+                  // Center Qibla Pointer Needle
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(end: targetAngle),
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, angle, child) {
+                      return Transform.rotate(
+                        angle: angle,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Icon(
+                              Icons.navigation,
+                              size: 150,
+                              color: activeColor,
+                            ),
+                            // Center Pivot Dot
+                            Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: onSurfaceColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: theme.colorScheme.surface, width: 3),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
+  }
+
+  Widget _buildStaticCompassView(Color onSurfaceColor, Color primaryColor) {
+    final double qiblaRad = widget.qiblaBearing * (math.pi / 180.0);
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          'Kaaba Bearing',
+          style: GoogleFonts.amiri(fontSize: 16, color: onSurfaceColor.withValues(alpha: 0.7)),
+        ),
+        Text(
+          '${widget.qiblaBearing.toStringAsFixed(1)}° ${_getCardinalDirection(widget.qiblaBearing)}',
+          style: GoogleFonts.amiri(
+            fontSize: 40,
+            fontWeight: FontWeight.bold,
+            color: primaryColor,
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: 240,
+          height: 240,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CustomPaint(
+                size: const Size(240, 240),
+                painter: CompassDialPainter(
+                  primaryColor: primaryColor,
+                  textColor: onSurfaceColor,
+                  accentColor: primaryColor,
+                  qiblaBearing: widget.qiblaBearing,
+                  isAligned: false,
+                ),
+              ),
+              Transform.rotate(
+                angle: qiblaRad,
+                child: Icon(Icons.navigation, size: 140, color: primaryColor),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Text(
+            'Rotate your device until North aligns to point directly to Kaaba.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.amiri(fontSize: 13, color: onSurfaceColor.withValues(alpha: 0.6)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class CompassDialPainter extends CustomPainter {
+  final Color primaryColor;
+  final Color textColor;
+  final Color accentColor;
+  final double qiblaBearing;
+  final bool isAligned;
+
+  CompassDialPainter({
+    required this.primaryColor,
+    required this.textColor,
+    required this.accentColor,
+    required this.qiblaBearing,
+    required this.isAligned,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+
+    // Outer circle
+    final circlePaint = Paint()
+      ..color = textColor.withValues(alpha: isAligned ? 0.3 : 0.1)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawCircle(center, radius - 8, circlePaint);
+
+    // Inner circle
+    final innerCirclePaint = Paint()
+      ..color = textColor.withValues(alpha: isAligned ? 0.2 : 0.06)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawCircle(center, radius - 30, innerCirclePaint);
+
+    final tickPaint = Paint()..style = PaintingStyle.stroke;
+
+    for (int i = 0; i < 360; i += 5) {
+      final isMajor = i % 30 == 0;
+      final isCardinal = i % 90 == 0;
+      final angle = (i - 90) * math.pi / 180.0;
+
+      final tickLength = isCardinal ? 12.0 : (isMajor ? 8.0 : 4.0);
+      tickPaint.strokeWidth = isCardinal ? 2.2 : (isMajor ? 1.4 : 0.9);
+      tickPaint.color = isCardinal
+          ? (i == 0 ? const Color(0xFFFF5252) : primaryColor)
+          : textColor.withValues(alpha: isMajor ? 0.45 : 0.15);
+
+      final p1 = Offset(
+        center.dx + (radius - 10 - tickLength) * math.cos(angle),
+        center.dy + (radius - 10 - tickLength) * math.sin(angle),
+      );
+      final p2 = Offset(
+        center.dx + (radius - 10) * math.cos(angle),
+        center.dy + (radius - 10) * math.sin(angle),
+      );
+      canvas.drawLine(p1, p2, tickPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CompassDialPainter oldDelegate) {
+    return oldDelegate.isAligned != isAligned ||
+        oldDelegate.primaryColor != primaryColor ||
+        oldDelegate.textColor != textColor;
   }
 }

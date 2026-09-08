@@ -43,3 +43,18 @@ Future<bool> showWebNotification(String title, String body, [String? icon]) asyn
   }
   return false;
 }
+
+double? getWebCompassHeading() {
+  try {
+    final hasFn = js.context.hasProperty('getDeviceCompassHeading');
+    if (hasFn) {
+      final dynamic val = js.context.callMethod('getDeviceCompassHeading');
+      if (val != null) {
+        return (val as num).toDouble();
+      }
+    }
+  } catch (e) {
+    // Suppress error
+  }
+  return null;
+}

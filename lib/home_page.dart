@@ -1418,7 +1418,6 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> with SingleTicker
   bool _noSensorDetected = false;
   Timer? _timeoutTimer;
   double _lastSmoothedAngle = 0.0;
-  bool _isCalibrating = false;
   late AnimationController _calibrationController;
 
   @override
@@ -1457,7 +1456,6 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> with SingleTicker
 
   Future<void> _calibrateCompass() async {
     setState(() {
-      _isCalibrating = true;
       _permissionDenied = false;
       _noSensorDetected = false;
     });
@@ -1471,9 +1469,6 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> with SingleTicker
     await Future.delayed(const Duration(milliseconds: 800));
 
     if (mounted) {
-      setState(() {
-        _isCalibrating = false;
-      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1663,6 +1658,7 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> with SingleTicker
                             angleDiffDeg: angleDiffDeg,
                             primaryColor: primaryColor,
                             onSurfaceColor: onSurfaceColor,
+                            surfaceColor: theme.colorScheme.surface,
                           );
                         },
                       ),
@@ -1731,6 +1727,7 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> with SingleTicker
     required double angleDiffDeg,
     required Color primaryColor,
     required Color onSurfaceColor,
+    required Color surfaceColor,
   }) {
     final activeColor = isFacingKaaba ? const Color(0xFF00E676) : primaryColor;
 
@@ -1888,7 +1885,7 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> with SingleTicker
                               decoration: BoxDecoration(
                                 color: onSurfaceColor,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: theme.colorScheme.surface, width: 3),
+                                border: Border.all(color: surfaceColor, width: 3),
                               ),
                             ),
                           ],

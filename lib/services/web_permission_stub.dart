@@ -13,3 +13,15 @@ Future<bool> showWebNotification(String title, String body, [String? icon]) asyn
 double? getWebCompassHeading() {
   return null;
 }
+
+Future<String?> subscribeWebPush(String vapidPublicKey) async {
+  return null;
+}
+
+Future<String?> getWebPushSubscription() async {
+  return null;
+}
+
+Future<bool> unsubscribeWebPush() async {
+  return true;
+}

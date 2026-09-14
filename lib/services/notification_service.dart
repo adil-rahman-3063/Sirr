@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sirr/services/web_permission.dart';
+import 'package:sirr/services/cloud_push_service.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -20,9 +21,18 @@ class NotificationService {
   // Track which prayers have notifications enabled. By default all are disabled.
   final Set<String> _enabledPrayers = {};
 
+  // Cached location parameters for Web Push background sync
+  double? _lastLat;
+  double? _lastLng;
+  String? _lastTimezone;
+  String? _lastCity;
+  int _lastMethod = 3;
+
+  Set<String> get enabledPrayers => Set.unmodifiable(_enabledPrayers);
+
   Future<void> init() async {
     if (_isInitialized) return;
-    
+
     _prefs = await SharedPreferences.getInstance();
     _loadSettings();
 
@@ -70,10 +80,10 @@ class NotificationService {
         );
       }
     }
-    
+
     _isInitialized = true;
   }
-  
+
   void _loadSettings() {
     final saved = _prefs.getStringList('enabledPrayers');
     if (saved != null) {
@@ -86,7 +96,49 @@ class NotificationService {
     return _enabledPrayers.contains(prayerName);
   }
 
-  Future<void> toggleNotification(String prayerName) async {
+  /// Update active location and metadata for push delivery
+  void updateLocationContext({
+    required double lat,
+    required double lng,
+    String? timezone,
+    String? city,
+    int method = 3,
+  }) {
+    _lastLat = lat;
+    _lastLng = lng;
+    _lastTimezone = timezone ?? DateTime.now().timeZoneName;
+    _lastCity = city;
+    _lastMethod = method;
+
+    // If web and user already has notifications enabled, sync location updates to Cloudflare Worker
+    if (kIsWeb && _enabledPrayers.isNotEmpty) {
+      CloudPushService().syncSubscription(
+        lat: lat,
+        lng: lng,
+        timezone: _lastTimezone!,
+        city: city,
+        method: method,
+        enabledPrayers: _enabledPrayers,
+      );
+    }
+  }
+
+  Future<void> toggleNotification(
+    String prayerName, {
+    double? lat,
+    double? lng,
+    String? timezone,
+    String? city,
+    int? method,
+  }) async {
+    if (lat != null && lng != null) {
+      _lastLat = lat;
+      _lastLng = lng;
+    }
+    if (timezone != null) _lastTimezone = timezone;
+    if (city != null) _lastCity = city;
+    if (method != null) _lastMethod = method;
+
     if (_enabledPrayers.contains(prayerName)) {
       _enabledPrayers.remove(prayerName);
     } else {
@@ -94,9 +146,21 @@ class NotificationService {
       await requestPermissions();
     }
     await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
-    
-    // Automatically re-schedule whenever a prayer is toggled
-    if (_lastCache != null) {
+
+    // Sync with Cloudflare Worker for background Web Push
+    if (kIsWeb && _lastLat != null && _lastLng != null) {
+      await CloudPushService().syncSubscription(
+        lat: _lastLat!,
+        lng: _lastLng!,
+        timezone: _lastTimezone ?? 'UTC',
+        city: _lastCity,
+        method: _lastMethod,
+        enabledPrayers: _enabledPrayers,
+      );
+    }
+
+    // Native mobile notifications scheduling
+    if (!kIsWeb && _lastCache != null) {
       await schedulePrayerNotifications(_lastCache!);
     }
   }
@@ -106,7 +170,7 @@ class NotificationService {
       await requestWebNotificationPermission();
       return;
     }
-    
+
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       await _flutterLocalNotificationsPlugin
           .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
@@ -123,7 +187,7 @@ class NotificationService {
     }
   }
 
-  // Triggered manually in foreground for web (and potentially mobile if not scheduled)
+  // Triggered manually in foreground for web
   void triggerForegroundNotification(String title, String body) {
     if (kIsWeb) {
       showWebNotification(title, body, 'icons/Icon-192.png');
@@ -133,11 +197,11 @@ class NotificationService {
   Future<void> schedulePrayerNotifications(Map<String, PrayerTimings> cache) async {
     _lastCache = cache;
     if (!_isInitialized || kIsWeb) return;
-    
+
     await _flutterLocalNotificationsPlugin.cancelAll();
-    
+
     int id = 0;
-    
+
     for (var dateString in cache.keys) {
       final timings = cache[dateString]!;
       final prayers = [
@@ -157,26 +221,31 @@ class NotificationService {
         final nextTiming = p['next'] as Prayertime;
         final startTime = startTiming.dateTime(date);
         final nextTime = nextTiming.dateTime(date);
-        
+
         if (startTime.isAfter(DateTime.now())) {
-           final diff = nextTime.difference(startTime);
-           final hours = diff.inHours;
-           final minutes = diff.inMinutes.remainder(60);
-           
-           String timeLeftStr = "";
-           if (hours > 0) timeLeftStr += "$hours hours ";
-           timeLeftStr += "$minutes minutes";
+          final diff = nextTime.difference(startTime);
+          final hours = diff.inHours;
+          final minutes = diff.inMinutes.remainder(60);
 
-           String message = "Time for $prayerName! You have $timeLeftStr left until ${p['nextName']}.";
+          String timeLeftStr = "";
+          if (hours > 0) timeLeftStr += "$hours hours ";
+          timeLeftStr += "$minutes minutes";
 
-           await _scheduleNotification(id++, "Time to Pray $prayerName", message, startTime);
+          String message = "Time for $prayerName! You have $timeLeftStr left until ${p['nextName']}.";
+
+          await _scheduleNotification(id++, "Time to Pray $prayerName", message, startTime);
         }
       }
-      
+
       if (isNotificationEnabled('Isha')) {
         final ishaStartTime = timings.isha.dateTime(date);
         if (ishaStartTime.isAfter(DateTime.now())) {
-            await _scheduleNotification(id++, "Time to Pray Isha", "Time for Isha! Make sure to pray before Fajr tomorrow.", ishaStartTime);
+          await _scheduleNotification(
+            id++,
+            "Time to Pray Isha",
+            "Time for Isha! Make sure to pray before Fajr tomorrow.",
+            ishaStartTime,
+          );
         }
       }
     }
@@ -184,29 +253,31 @@ class NotificationService {
 
   Future<void> _scheduleNotification(int id, String title, String body, DateTime scheduledTime) async {
     await _flutterLocalNotificationsPlugin.zonedSchedule(
-        id: id,
-        title: title,
-        body: body,
-        scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
-        notificationDetails: const NotificationDetails(
-            android: AndroidNotificationDetails(
-                'prayer_channel_id',
-                'Prayer Times',
-                channelDescription: 'Notifications for daily prayer times',
-                importance: Importance.max,
-                priority: Priority.high,
-                icon: '@mipmap/ic_launcher',
-                playSound: true,
-                enableVibration: true,
-                visibility: NotificationVisibility.public,
-            ),
-            iOS: DarwinNotificationDetails(
-                presentAlert: true,
-                presentBadge: true,
-                presentSound: true,
-                sound: 'default',
-                interruptionLevel: InterruptionLevel.timeSensitive,
-            )),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle);
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'prayer_channel_id',
+          'Prayer Times',
+          channelDescription: 'Notifications for daily prayer times',
+          importance: Importance.max,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          playSound: true,
+          enableVibration: true,
+          visibility: NotificationVisibility.public,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+          sound: 'default',
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    );
   }
 }

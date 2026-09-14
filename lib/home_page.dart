@@ -263,6 +263,14 @@ class _HomePageState extends State<HomePage> {
         _locationName = "Current Location";
       }
 
+      if (_currentPosition != null) {
+        NotificationService().updateLocationContext(
+          lat: _currentPosition!.latitude,
+          lng: _currentPosition!.longitude,
+          city: _locationName,
+        );
+      }
+
       await _loadDataForDate(DateTime.now());
       // Pre-load adjacent days so countdown/next-prayer cards work at day boundaries
       _loadDataForDate(DateTime.now().add(const Duration(days: 1)));
@@ -831,7 +839,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _handleNotificationToggle(String prayerName) async {
     final willEnable = !NotificationService().isNotificationEnabled(prayerName);
-    await NotificationService().toggleNotification(prayerName);
+    await NotificationService().toggleNotification(
+      prayerName,
+      lat: _currentPosition?.latitude,
+      lng: _currentPosition?.longitude,
+      city: _locationName,
+    );
     
     if (willEnable && kIsWeb && mounted) {
       try {

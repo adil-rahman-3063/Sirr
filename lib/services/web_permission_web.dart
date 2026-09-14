@@ -58,3 +58,52 @@ double? getWebCompassHeading() {
   }
   return null;
 }
+
+/// Request Web Push subscription with VAPID Public Key
+Future<String?> subscribeWebPush(String vapidPublicKey) async {
+  try {
+    final hasFn = js.context.hasProperty('subscribeWebPush');
+    if (hasFn) {
+      final dynamic resultPromise = js.context.callMethod('subscribeWebPush', [vapidPublicKey]);
+      final dynamic result = await js_util.promiseToFuture(resultPromise);
+      if (result != null) {
+        return result.toString();
+      }
+    }
+  } catch (e) {
+    // Suppress error
+  }
+  return null;
+}
+
+/// Retrieve existing Web Push subscription JSON
+Future<String?> getWebPushSubscription() async {
+  try {
+    final hasFn = js.context.hasProperty('getWebPushSubscription');
+    if (hasFn) {
+      final dynamic resultPromise = js.context.callMethod('getWebPushSubscription');
+      final dynamic result = await js_util.promiseToFuture(resultPromise);
+      if (result != null) {
+        return result.toString();
+      }
+    }
+  } catch (e) {
+    // Suppress error
+  }
+  return null;
+}
+
+/// Unsubscribe from Web Push
+Future<bool> unsubscribeWebPush() async {
+  try {
+    final hasFn = js.context.hasProperty('unsubscribeWebPush');
+    if (hasFn) {
+      final dynamic resultPromise = js.context.callMethod('unsubscribeWebPush');
+      final bool result = await js_util.promiseToFuture(resultPromise);
+      return result;
+    }
+  } catch (e) {
+    // Suppress error
+  }
+  return true;
+}

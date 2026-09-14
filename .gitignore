@@ -65,5 +65,8 @@ linux/flutter/ephemeral/
 # MacOS
 macos/Flutter/ephemeral/
 
-# Secrets
+# Secrets & Node
 .env
+node_modules/
+.wrangler/
+

@@ -1,0 +1,22 @@
+{
+  "name": "sirr-notifications-worker",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for anonymous prayer time push notifications",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "generate-vapid": "node scripts/generate-vapid.js",
+    "d1:init": "wrangler d1 execute sirr-push-db --local --file=./schema.sql",
+    "d1:init:remote": "wrangler d1 execute sirr-push-db --remote --file=./schema.sql"
+  },
+  "dependencies": {
+    "adhan": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241230.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.100.0"
+  }
+}

@@ -84,12 +84,29 @@ class NotificationService {
     _isInitialized = true;
   }
 
+  static const String _kNotificationMigrationKey = 'push_v2_reset_migration';
+
   void _loadSettings() {
-    final saved = _prefs.getStringList('enabledPrayers');
-    if (saved != null) {
+    final hasMigrated = _prefs.getBool(_kNotificationMigrationKey) ?? false;
+    if (!hasMigrated && kIsWeb) {
+      // Force clear all previous notification toggles for web visitors
+      _prefs.remove('enabledPrayers');
+      _prefs.remove('last_push_endpoint');
       _enabledPrayers.clear();
-      _enabledPrayers.addAll(saved);
+      _prefs.setBool(_kNotificationMigrationKey, true);
+    } else {
+      final saved = _prefs.getStringList('enabledPrayers');
+      if (saved != null) {
+        _enabledPrayers.clear();
+        _enabledPrayers.addAll(saved);
+      }
     }
+
+    _lastLat = _prefs.getDouble('last_known_lat');
+    _lastLng = _prefs.getDouble('last_known_lng');
+    _lastCity = _prefs.getString('last_known_city');
+    _lastTimezone = _prefs.getString('last_known_timezone') ?? DateTime.now().timeZoneName;
+    _lastMethod = _prefs.getInt('last_known_method') ?? 3;
   }
 
   bool isNotificationEnabled(String prayerName) {
@@ -109,6 +126,12 @@ class NotificationService {
     _lastTimezone = timezone ?? DateTime.now().timeZoneName;
     _lastCity = city;
     _lastMethod = method;
+
+    _prefs.setDouble('last_known_lat', lat);
+    _prefs.setDouble('last_known_lng', lng);
+    _prefs.setInt('last_known_method', method);
+    if (city != null) _prefs.setString('last_known_city', city);
+    if (_lastTimezone != null) _prefs.setString('last_known_timezone', _lastTimezone!);
 
     // If web and user already has notifications enabled, sync location updates to Cloudflare Worker
     if (kIsWeb && _enabledPrayers.isNotEmpty) {

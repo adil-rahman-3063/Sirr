@@ -118,7 +118,7 @@
       }
     };
 
-    // Robust Service Worker registration for Background Push
+    // On-demand Service Worker registration for Background Push
     async function getOrRegisterSW() {
       if (!('serviceWorker' in navigator)) return null;
       try {
@@ -132,10 +132,6 @@
         console.error('[WebPush] ServiceWorker registration failed: ', err);
         return null;
       }
-    }
-
-    if ('serviceWorker' in navigator) {
-      getOrRegisterSW();
     }
 
     function urlBase64ToUint8Array(base64String) {

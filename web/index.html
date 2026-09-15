@@ -118,13 +118,24 @@
       }
     };
 
-    // Service Worker registration for Background Push
+    // Robust Service Worker registration for Background Push
+    async function getOrRegisterSW() {
+      if (!('serviceWorker' in navigator)) return null;
+      try {
+        let reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) {
+          reg = await navigator.serviceWorker.register('sw.js');
+        }
+        await navigator.serviceWorker.ready;
+        return reg;
+      } catch (err) {
+        console.error('[WebPush] ServiceWorker registration failed: ', err);
+        return null;
+      }
+    }
+
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
-        navigator.serviceWorker.register('sw.js').catch(function(err) {
-          console.log('ServiceWorker registration failed: ', err);
-        });
-      });
+      getOrRegisterSW();
     }
 
     function urlBase64ToUint8Array(base64String) {
@@ -140,13 +151,19 @@
 
     window.subscribeWebPush = async function(vapidPublicKey) {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn("[WebPush] PushManager not supported in this browser");
         return null;
       }
       try {
         const permission = await Notification.requestPermission();
-        if (permission !== 'granted') return null;
+        if (permission !== 'granted') {
+          console.warn("[WebPush] Notification permission denied");
+          return null;
+        }
 
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await getOrRegisterSW();
+        if (!registration) return null;
+
         let subscription = await registration.pushManager.getSubscription();
         if (!subscription) {
           const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
@@ -156,18 +173,11 @@
           });
         }
 
-        const p256dh = subscription.getKey ? btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '';
-        const auth = subscription.getKey ? btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '';
-
-        return JSON.stringify({
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: p256dh,
-            auth: auth
-          }
-        });
+        const json = subscription.toJSON();
+        console.log("[WebPush] Push subscription ready:", json);
+        return JSON.stringify(json);
       } catch (e) {
-        console.error("Error subscribing to Web Push:", e);
+        console.error("[WebPush] Error subscribing to Web Push:", e);
         return null;
       }
     };
@@ -175,17 +185,13 @@
     window.getWebPushSubscription = async function() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
       try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await getOrRegisterSW();
+        if (!registration) return null;
         const subscription = await registration.pushManager.getSubscription();
         if (!subscription) return null;
-        const p256dh = subscription.getKey ? btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '';
-        const auth = subscription.getKey ? btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '';
-        return JSON.stringify({
-          endpoint: subscription.endpoint,
-          keys: { p256dh, auth }
-        });
+        return JSON.stringify(subscription.toJSON());
       } catch (e) {
-        console.error("Error getting push subscription:", e);
+        console.error("[WebPush] Error getting push subscription:", e);
         return null;
       }
     };
@@ -193,14 +199,15 @@
     window.unsubscribeWebPush = async function() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return true;
       try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await getOrRegisterSW();
+        if (!registration) return true;
         const subscription = await registration.pushManager.getSubscription();
         if (subscription) {
           return await subscription.unsubscribe();
         }
         return true;
       } catch (e) {
-        console.error("Error unsubscribing:", e);
+        console.error("[WebPush] Error unsubscribing:", e);
         return false;
       }
     };

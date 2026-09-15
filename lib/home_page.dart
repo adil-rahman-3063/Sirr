@@ -17,6 +17,8 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'dart:math' as math;
 import 'package:universal_html/html.dart' as html;
 import 'package:sirr/services/web_permission.dart';
+import 'package:sirr/services/cloud_push_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class HomePage extends StatefulWidget {
@@ -192,6 +194,135 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _checkAndShowNotificationPrompt() async {
+    if (!kIsWeb) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final bool alreadyPrompted = prefs.getBool('push_prompt_dismissed_v2') ?? false;
+      if (alreadyPrompted || NotificationService().enabledPrayers.isNotEmpty) {
+        return;
+      }
+
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (!mounted) return;
+
+      if (!context.mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) {
+          final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
+          return AlertDialog(
+            backgroundColor: isDark ? const Color(0xFF1E1E2C) : const Color(0xFFFAF7F2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5A93B).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.notifications_active_rounded, color: Color(0xFFE5A93B), size: 26),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'تنبيهات الصلاة',
+                    style: GoogleFonts.amiri(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Never miss a prayer.',
+                  style: GoogleFonts.outfit(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFFE5A93B),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Enable daily prayer reminders for $_locationName? You will receive notifications at each prayer time, even when your browser is closed.',
+                  style: GoogleFonts.outfit(
+                    fontSize: 14,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+            actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  prefs.setBool('push_prompt_dismissed_v2', true);
+                  Navigator.of(dialogContext).pop();
+                },
+                child: Text(
+                  'Later',
+                  style: GoogleFonts.outfit(
+                    color: isDark ? Colors.white60 : Colors.black54,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE5A93B),
+                  foregroundColor: Colors.black,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                onPressed: () async {
+                  prefs.setBool('push_prompt_dismissed_v2', true);
+                  Navigator.of(dialogContext).pop();
+                  final success = await NotificationService().enableAllPrayers(
+                    lat: _currentPosition?.latitude,
+                    lng: _currentPosition?.longitude,
+                    city: _locationName,
+                  );
+                  if (mounted) {
+                    setState(() {});
+                    if (success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '🔔 All 5 prayer notifications enabled successfully!',
+                            style: GoogleFonts.amiri(),
+                          ),
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                label: Text(
+                  'Enable All',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint("Error showing notification prompt: $e");
+    }
+  }
+
   DateTime _getDateForIndex(int index) {
     final diff = index - _initialPage;
     return _referenceDate.add(Duration(days: diff));
@@ -279,6 +410,7 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _isLoading = false;
       });
+      _checkAndShowNotificationPrompt();
       
     } catch (e) {
       _errorMessage = e.toString();
@@ -845,7 +977,6 @@ class _HomePageState extends State<HomePage> {
       lng: _currentPosition?.longitude,
       city: _locationName,
     );
-    
     if (willEnable && kIsWeb && mounted) {
       try {
         final bool isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;
@@ -858,6 +989,29 @@ class _HomePageState extends State<HomePage> {
               content: Text(
                 'To get notifications on iPhone, tap Share (⎋) and select "Add to Home Screen".',
                 style: GoogleFonts.amiri(),
+              ),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '🔔 $prayerName notification enabled! You will be alerted at prayer time.',
+                style: GoogleFonts.amiri(),
+              ),
+              action: SnackBarAction(
+                label: 'Test Alert',
+                textColor: const Color(0xFFE5A93B),
+                onPressed: () async {
+                  final sent = await CloudPushService().sendTestPush();
+                  if (mounted && !sent) {
+                    NotificationService().triggerForegroundNotification(
+                      'سِرّ • صلاة $prayerName',
+                      'Test notification from Sirr Prayer Times',
+                    );
+                  }
+                },
               ),
               duration: const Duration(seconds: 4),
             ),

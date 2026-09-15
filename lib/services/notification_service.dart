@@ -188,6 +188,46 @@ class NotificationService {
     }
   }
 
+  Future<bool> enableAllPrayers({
+    double? lat,
+    double? lng,
+    String? timezone,
+    String? city,
+    int? method,
+  }) async {
+    if (lat != null && lng != null) {
+      _lastLat = lat;
+      _lastLng = lng;
+    }
+    if (timezone != null) _lastTimezone = timezone;
+    if (city != null) _lastCity = city;
+    if (method != null) _lastMethod = method;
+
+    _enabledPrayers.addAll(['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']);
+    await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
+    await requestPermissions();
+
+    if (kIsWeb && _lastLat != null && _lastLng != null) {
+      final synced = await CloudPushService().syncSubscription(
+        lat: _lastLat!,
+        lng: _lastLng!,
+        timezone: _lastTimezone ?? 'UTC',
+        city: _lastCity,
+        method: _lastMethod,
+        enabledPrayers: _enabledPrayers,
+      );
+      if (synced) {
+        await CloudPushService().sendTestPush();
+      }
+      return synced;
+    }
+
+    if (!kIsWeb && _lastCache != null) {
+      await schedulePrayerNotifications(_lastCache!);
+    }
+    return true;
+  }
+
   Future<void> requestPermissions() async {
     if (kIsWeb) {
       await requestWebNotificationPermission();

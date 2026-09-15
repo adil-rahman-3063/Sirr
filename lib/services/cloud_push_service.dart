@@ -83,6 +83,38 @@ class CloudPushService {
     }
   }
 
+  /// Send an immediate test notification to verify push delivery to this device
+  Future<bool> sendTestPush() async {
+    if (!kIsWeb) return false;
+    try {
+      String? rawSubscription = await getWebPushSubscription();
+      rawSubscription ??= await subscribeWebPush(PushConfig.vapidPublicKey);
+      if (rawSubscription == null) return false;
+
+      final Map<String, dynamic> subData = json.decode(rawSubscription);
+      final String? endpoint = subData['endpoint'];
+      final dynamic keys = subData['keys'];
+
+      if (endpoint == null || keys == null) return false;
+
+      final response = await http.post(
+        Uri.parse('${PushConfig.workerApiUrl}/api/test-push'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'endpoint': endpoint,
+          'keys': keys,
+          'title': 'سِرّ • اختبار الإشعارات',
+          'body': 'Push notifications are successfully active for Sirr Prayer Times!',
+        }),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('[CloudPushService] Test push error: $e');
+      return false;
+    }
+  }
+
   /// Unsubscribe from Cloudflare backend and browser push manager
   Future<void> unsubscribe() async {
     if (!kIsWeb) return;

@@ -302,9 +302,14 @@ export default {
         const timezone = url.searchParams.get('timezone') || 'Asia/Riyadh';
         const locationKey = getLocationKey(lat, lng, method);
         const today = new Date();
-        const tomorrow = new Date(today.getTime() + 24 * 3600 * 1000);
+        const { dateStr } = getDateInTimezone(today, timezone);
         const todayTimes = await getOrFetchDailyPrayerTimes(env, locationKey, lat, lng, method, today, timezone);
-        ctx.waitUntil(getOrFetchDailyPrayerTimes(env, locationKey, lat, lng, method, tomorrow, timezone));
+        
+        // Keep strictly only today's data for this location
+        await env.DB.prepare('DELETE FROM daily_prayer_times WHERE location_key = ? AND date_str != ?')
+          .bind(locationKey, dateStr)
+          .run();
+
         return jsonResponse({
           status: 'ok',
           locationKey,
@@ -386,14 +391,16 @@ export default {
           now
         ).run();
 
-        // Ensure today's prayer times are fetched and cached immediately
+        // Ensure ONLY today's prayer times are fetched and stored
         const today = new Date();
-        const tomorrow = new Date(today.getTime() + 24 * 3600 * 1000);
+        const { dateStr } = getDateInTimezone(today, timezone);
         await getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, today, timezone);
 
-        // Pre-fetch tomorrow's prayer times in the background
+        // Remove any old/extra date rows for this location
         ctx.waitUntil(
-          getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, tomorrow, timezone)
+          env.DB.prepare('DELETE FROM daily_prayer_times WHERE location_key = ? AND date_str != ?')
+            .bind(locationKey, dateStr)
+            .run()
         );
 
         return jsonResponse({ ok: true, message: 'Push subscription updated successfully', locationKey });
@@ -473,6 +480,7 @@ export default {
 
     for (const loc of locations) {
       try {
+        const { dateStr } = getDateInTimezone(now, loc.timezone);
         const dailyTimes = await getOrFetchDailyPrayerTimes(
           env,
           loc.location_key,
@@ -485,6 +493,10 @@ export default {
         if (dailyTimes) {
           locationTimesMap.set(loc.location_key, dailyTimes);
         }
+        // Keep strictly only today's prayer times for this location
+        await env.DB.prepare('DELETE FROM daily_prayer_times WHERE location_key = ? AND date_str != ?')
+          .bind(loc.location_key, dateStr)
+          .run();
       } catch (err) {
         console.error(`Error fetching daily times for ${loc.location_key}:`, err);
       }

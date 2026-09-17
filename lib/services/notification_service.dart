@@ -154,10 +154,10 @@ class NotificationService {
     String? city,
     int? method,
   }) async {
-    if (lat != null && lng != null) {
-      _lastLat = lat;
-      _lastLng = lng;
-    }
+    final activeLat = lat ?? _lastLat ?? 21.4225;
+    final activeLng = lng ?? _lastLng ?? 39.8262;
+    _lastLat = activeLat;
+    _lastLng = activeLng;
     if (timezone != null) _lastTimezone = timezone;
     if (city != null) _lastCity = city;
     if (method != null) _lastMethod = method;
@@ -171,11 +171,11 @@ class NotificationService {
     await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
 
     // Sync with Cloudflare Worker for background Web Push
-    if (kIsWeb && _lastLat != null && _lastLng != null) {
+    if (kIsWeb) {
       await CloudPushService().syncSubscription(
         lat: _lastLat!,
         lng: _lastLng!,
-        timezone: _lastTimezone ?? 'UTC',
+        timezone: _lastTimezone ?? DateTime.now().timeZoneName,
         city: _lastCity,
         method: _lastMethod,
         enabledPrayers: _enabledPrayers,
@@ -195,10 +195,10 @@ class NotificationService {
     String? city,
     int? method,
   }) async {
-    if (lat != null && lng != null) {
-      _lastLat = lat;
-      _lastLng = lng;
-    }
+    final activeLat = lat ?? _lastLat ?? 21.4225;
+    final activeLng = lng ?? _lastLng ?? 39.8262;
+    _lastLat = activeLat;
+    _lastLng = activeLng;
     if (timezone != null) _lastTimezone = timezone;
     if (city != null) _lastCity = city;
     if (method != null) _lastMethod = method;
@@ -207,11 +207,11 @@ class NotificationService {
     await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
     await requestPermissions();
 
-    if (kIsWeb && _lastLat != null && _lastLng != null) {
+    if (kIsWeb) {
       final synced = await CloudPushService().syncSubscription(
         lat: _lastLat!,
         lng: _lastLng!,
-        timezone: _lastTimezone ?? 'UTC',
+        timezone: _lastTimezone ?? DateTime.now().timeZoneName,
         city: _lastCity,
         method: _lastMethod,
         enabledPrayers: _enabledPrayers,

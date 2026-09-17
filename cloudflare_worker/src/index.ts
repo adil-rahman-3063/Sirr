@@ -257,6 +257,24 @@ export default {
       subject: env.VAPID_SUBJECT || 'mailto:admin@sirr.pages.dev',
     };
 
+    // 0. Debug endpoint to inspect all D1 tables in browser
+    if (url.pathname === '/api/debug' && request.method === 'GET') {
+      try {
+        const subs = await env.DB.prepare('SELECT id, endpoint, city, timezone, lat, lng, method, fajr, dhuhr, asr, maghrib, isha, last_prayer, updated_at FROM subscriptions').all();
+        const times = await env.DB.prepare('SELECT * FROM daily_prayer_times').all();
+        return jsonResponse({
+          status: 'ok',
+          time: new Date().toISOString(),
+          totalSubscriptions: subs.results?.length ?? 0,
+          subscriptions: subs.results || [],
+          totalCachedDays: times.results?.length ?? 0,
+          dailyPrayerTimes: times.results || [],
+        });
+      } catch (err: unknown) {
+        return jsonResponse({ status: 'error', error: String(err) }, 500);
+      }
+    }
+
     // 1. Health check & stats
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
@@ -269,6 +287,28 @@ export default {
           time: new Date().toISOString(),
           activeSubscriptions: countResult?.total ?? 0,
           cachedLocationDays: cachedDays?.total ?? 0,
+        });
+      } catch (err: unknown) {
+        return jsonResponse({ status: 'error', error: String(err) }, 500);
+      }
+    }
+
+    // 1b. Prayer times query & cache seeder
+    if (url.pathname === '/api/prayer-times' && request.method === 'GET') {
+      try {
+        const lat = parseFloat(url.searchParams.get('lat') || '21.4225');
+        const lng = parseFloat(url.searchParams.get('lng') || '39.8262');
+        const method = parseInt(url.searchParams.get('method') || '3', 10);
+        const timezone = url.searchParams.get('timezone') || 'Asia/Riyadh';
+        const locationKey = getLocationKey(lat, lng, method);
+        const today = new Date();
+        const tomorrow = new Date(today.getTime() + 24 * 3600 * 1000);
+        const todayTimes = await getOrFetchDailyPrayerTimes(env, locationKey, lat, lng, method, today, timezone);
+        ctx.waitUntil(getOrFetchDailyPrayerTimes(env, locationKey, lat, lng, method, tomorrow, timezone));
+        return jsonResponse({
+          status: 'ok',
+          locationKey,
+          prayerTimes: todayTimes,
         });
       } catch (err: unknown) {
         return jsonResponse({ status: 'error', error: String(err) }, 500);
@@ -346,14 +386,14 @@ export default {
           now
         ).run();
 
-        // Pre-fetch today's and tomorrow's prayer times from Aladhan API in the background
+        // Ensure today's prayer times are fetched and cached immediately
+        const today = new Date();
+        const tomorrow = new Date(today.getTime() + 24 * 3600 * 1000);
+        await getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, today, timezone);
+
+        // Pre-fetch tomorrow's prayer times in the background
         ctx.waitUntil(
-          (async () => {
-            const today = new Date();
-            const tomorrow = new Date(today.getTime() + 24 * 3600 * 1000);
-            await getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, today, timezone);
-            await getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, tomorrow, timezone);
-          })()
+          getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, tomorrow, timezone)
         );
 
         return jsonResponse({ ok: true, message: 'Push subscription updated successfully', locationKey });

@@ -216,9 +216,6 @@ class NotificationService {
         method: _lastMethod,
         enabledPrayers: _enabledPrayers,
       );
-      if (synced) {
-        await CloudPushService().sendTestPush();
-      }
       return synced;
     }
 

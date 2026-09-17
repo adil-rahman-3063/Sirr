@@ -257,7 +257,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: 8),
                 Text(
                   hasActive
-                      ? 'You are receiving daily reminders for $_locationName. You can send a test alert or manage individual prayer bells below.'
+                      ? 'You are receiving daily prayer reminders for $_locationName. You will be notified automatically at each prayer time.'
                       : 'Enable daily prayer reminders for $_locationName? You will receive notifications at each prayer time, even when your browser is closed.',
                   style: GoogleFonts.outfit(
                     fontSize: 14,
@@ -282,32 +282,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
-              if (hasActive) ...[
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFE5A93B),
-                    side: const BorderSide(color: Color(0xFFE5A93B)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () async {
-                    Navigator.of(dialogContext).pop();
-                    final sent = await CloudPushService().sendTestPush();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            sent ? '🔔 Test notification dispatched!' : 'Notification test sent.',
-                            style: GoogleFonts.amiri(),
-                          ),
-                          duration: const Duration(seconds: 3),
-                        ),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.send_rounded, size: 16),
-                  label: Text('Send Test Alert', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-                ),
-              ] else ...[
+              if (!hasActive) ...[
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFE5A93B),

@@ -84,14 +84,16 @@ class NotificationService {
     _isInitialized = true;
   }
 
-  static const String _kNotificationMigrationKey = 'push_v2_reset_migration';
+  static const String _kNotificationMigrationKey = 'push_v5_force_reset_migration';
 
   void _loadSettings() {
     final hasMigrated = _prefs.getBool(_kNotificationMigrationKey) ?? false;
     if (!hasMigrated && kIsWeb) {
-      // Force clear all previous notification toggles for web visitors
+      // Force clear all previous notification toggles and dismissed prompts for web visitors
       _prefs.remove('enabledPrayers');
       _prefs.remove('last_push_endpoint');
+      _prefs.remove('push_prompt_dismissed_v4');
+      _prefs.remove('push_prompt_dismissed_v5');
       _enabledPrayers.clear();
       _prefs.setBool(_kNotificationMigrationKey, true);
     } else {

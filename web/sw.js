@@ -1,3 +1,4 @@
+
 // Sirr (سِرّ) Web Push Service Worker
 self.addEventListener('install', (event) => {
   self.skipWaiting();

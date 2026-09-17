@@ -199,7 +199,7 @@ class _HomePageState extends State<HomePage> {
       final prefs = await SharedPreferences.getInstance();
       if (!force) {
         if (!kIsWeb) return;
-        final bool alreadyPrompted = prefs.getBool('push_prompt_dismissed_v4') ?? false;
+        final bool alreadyPrompted = prefs.getBool('push_prompt_dismissed_v5') ?? false;
         if (alreadyPrompted || NotificationService().enabledPrayers.isNotEmpty) {
           return;
         }
@@ -271,7 +271,7 @@ class _HomePageState extends State<HomePage> {
             actions: [
               TextButton(
                 onPressed: () {
-                  prefs.setBool('push_prompt_dismissed_v4', true);
+                  prefs.setBool('push_prompt_dismissed_v5', true);
                   Navigator.of(dialogContext).pop();
                 },
                 child: Text(
@@ -292,7 +292,7 @@ class _HomePageState extends State<HomePage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   ),
                   onPressed: () async {
-                    prefs.setBool('push_prompt_dismissed_v4', true);
+                    prefs.setBool('push_prompt_dismissed_v5', true);
                     Navigator.of(dialogContext).pop();
                     final success = await NotificationService().enableAllPrayers(
                       lat: _currentPosition?.latitude,

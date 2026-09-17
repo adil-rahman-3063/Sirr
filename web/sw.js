@@ -31,8 +31,8 @@ self.addEventListener('push', (event) => {
     badge: data.badge || 'icons/Icon-192.png',
     tag: data.tag || 'prayer-notification',
     renotify: true,
-    requireInteraction: false,
-    vibrate: [200, 100, 200],
+    requireInteraction: true,
+    vibrate: [300, 100, 300, 100, 300],
     data: data.data || { url: '/' },
   };
 

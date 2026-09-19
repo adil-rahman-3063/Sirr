@@ -199,12 +199,23 @@ class _HomePageState extends State<HomePage> {
       final prefs = await SharedPreferences.getInstance();
       if (!force) {
         if (!kIsWeb) return;
+
+        // Check if device is already registered in Cloudflare D1 table
+        final isAlreadySubscribed = await NotificationService().syncOrResetSubscriptionOnStartup();
+        if (isAlreadySubscribed) {
+          // Device is already in the database: restore state and DO NOT show prompt
+          if (mounted) setState(() {});
+          return;
+        }
+
+        // If not in database, user starts fresh
         final bool alreadyPrompted = prefs.getBool('push_prompt_dismissed_v6') ?? false;
         if (alreadyPrompted || NotificationService().enabledPrayers.isNotEmpty) {
           return;
         }
         await Future.delayed(const Duration(milliseconds: 1500));
         if (!mounted) return;
+        if (NotificationService().enabledPrayers.isNotEmpty) return;
       }
 
       if (!mounted) return;

@@ -119,6 +119,35 @@ class CloudPushService {
     }
   }
 
+  /// Check if this browser device has an active subscription in Cloudflare D1
+  Future<List<String>?> checkActiveSubscription() async {
+    if (!kIsWeb) return null;
+    try {
+      final rawSub = await getWebPushSubscription();
+      if (rawSub == null) return null;
+
+      final subData = json.decode(rawSub);
+      final endpoint = subData['endpoint'];
+      if (endpoint == null) return null;
+
+      final response = await http.post(
+        Uri.parse('${PushConfig.workerApiUrl}/api/check-subscription'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'endpoint': endpoint}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['isSubscribed'] == true && data['enabledPrayers'] != null) {
+          return List<String>.from(data['enabledPrayers']);
+        }
+      }
+    } catch (e) {
+      debugPrint('[CloudPushService] checkActiveSubscription error: $e');
+    }
+    return null;
+  }
+
   /// Unsubscribe from Cloudflare backend and browser push manager
   Future<void> unsubscribe() async {
     if (!kIsWeb) return;

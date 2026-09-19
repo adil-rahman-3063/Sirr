@@ -116,6 +116,32 @@ class NotificationService {
     return _enabledPrayers.contains(prayerName);
   }
 
+  /// Sync with remote Cloudflare D1 on app startup:
+  /// - If device IS in D1: restore enabled prayers, dismiss prompt, never show prompt!
+  /// - If device is NOT in D1: reset local enabled prayers & dismissed flag so user starts fresh.
+  Future<bool> syncOrResetSubscriptionOnStartup() async {
+    if (!kIsWeb) return false;
+    try {
+      final remotePrayers = await CloudPushService().checkActiveSubscription();
+      if (remotePrayers != null && remotePrayers.isNotEmpty) {
+        _enabledPrayers.clear();
+        _enabledPrayers.addAll(remotePrayers);
+        await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
+        await _prefs.setBool('push_prompt_dismissed_v6', true);
+        return true;
+      } else {
+        // Device is not in D1 - reset local state to start from beginning!
+        _enabledPrayers.clear();
+        await _prefs.remove('enabledPrayers');
+        await _prefs.remove('push_prompt_dismissed_v6');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('[NotificationService] syncOrResetSubscriptionOnStartup error: $e');
+      return false;
+    }
+  }
+
   /// Update active location and metadata for push delivery
   void updateLocationContext({
     required double lat,

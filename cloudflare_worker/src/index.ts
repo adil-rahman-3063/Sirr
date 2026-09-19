@@ -442,6 +442,39 @@ export default {
       }
     }
 
+    // 3b. Check if an endpoint is already registered in subscriptions table
+    if (url.pathname === '/api/check-subscription' && request.method === 'POST') {
+      try {
+        const body = (await request.json()) as any;
+        const { endpoint } = body;
+        if (!endpoint) {
+          return jsonResponse({ isSubscribed: false }, 200);
+        }
+
+        const sub = await env.DB.prepare('SELECT fajr, dhuhr, asr, maghrib, isha FROM subscriptions WHERE endpoint = ?')
+          .bind(endpoint)
+          .first<{ fajr: number; dhuhr: number; asr: number; maghrib: number; isha: number }>();
+
+        if (sub) {
+          const enabledPrayers: string[] = [];
+          if (sub.fajr) enabledPrayers.push('Fajr');
+          if (sub.dhuhr) enabledPrayers.push('Dhuhr');
+          if (sub.asr) enabledPrayers.push('Asr');
+          if (sub.maghrib) enabledPrayers.push('Maghrib');
+          if (sub.isha) enabledPrayers.push('Isha');
+
+          return jsonResponse({
+            isSubscribed: true,
+            enabledPrayers,
+          });
+        }
+
+        return jsonResponse({ isSubscribed: false });
+      } catch (err: unknown) {
+        return jsonResponse({ error: String(err) }, 500);
+      }
+    }
+
     // 4. Test notification trigger
     if (url.pathname === '/api/test-push' && request.method === 'POST') {
       try {
@@ -464,6 +497,38 @@ export default {
 
         const result = await sendWebPush(subscription, payload, vapid);
         return jsonResponse(result);
+      } catch (err: unknown) {
+        return jsonResponse({ error: String(err) }, 500);
+      }
+    }
+
+    // 5. Broadcast test notification to all current subscribers in DB
+    if (url.pathname === '/api/broadcast-test' && (request.method === 'POST' || request.method === 'GET')) {
+      try {
+        const subs = await env.DB.prepare('SELECT endpoint, p256dh, auth FROM subscriptions').all<{ endpoint: string; p256dh: string; auth: string }>();
+        if (!subs.results || subs.results.length === 0) {
+          return jsonResponse({ message: 'No subscribers found in database to notify. Please enable notifications in the app first!' });
+        }
+
+        const results = [];
+        for (const sub of subs.results) {
+          const subscription: PushSubscription = {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth },
+          };
+          const payload: PushPayload = {
+            title: 'سِرّ • تنبيه تجريبي',
+            body: '✦ Background push notification received successfully while app is closed!',
+            icon: 'icons/Icon-192.png',
+            badge: 'icons/Icon-192.png',
+            tag: 'test-broadcast-' + Date.now(),
+            data: { url: '/' },
+          };
+          const res = await sendWebPush(subscription, payload, vapid);
+          results.push({ endpoint: sub.endpoint.slice(0, 30) + '...', ...res });
+        }
+
+        return jsonResponse({ ok: true, totalSent: subs.results.length, results });
       } catch (err: unknown) {
         return jsonResponse({ error: String(err) }, 500);
       }

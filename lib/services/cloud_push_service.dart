@@ -47,12 +47,13 @@ class CloudPushService {
       }
 
       // 2. Build payload for Cloudflare Worker
+      final safeTimezone = (timezone.trim().isNotEmpty) ? timezone.trim() : 'UTC';
       final Map<String, dynamic> payload = {
         'endpoint': endpoint,
         'keys': keys,
         'lat': lat,
         'lng': lng,
-        'timezone': timezone,
+        'timezone': safeTimezone,
         'city': city ?? '',
         'method': method,
         'fajr': enabledPrayers.contains('Fajr') ? 1 : 0,
@@ -62,11 +63,14 @@ class CloudPushService {
         'isha': enabledPrayers.contains('Isha') ? 1 : 0,
       };
 
+      debugPrint('[CloudPushService] Sending subscribe to ${PushConfig.workerApiUrl}/api/subscribe');
       final response = await http.post(
         Uri.parse('${PushConfig.workerApiUrl}/api/subscribe'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(payload),
       );
+
+      debugPrint('[CloudPushService] Subscribe response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
         debugPrint('[CloudPushService] Successfully synced push subscription with Cloudflare Worker');
@@ -77,8 +81,8 @@ class CloudPushService {
         debugPrint('[CloudPushService] Error syncing subscription: ${response.statusCode} ${response.body}');
         return false;
       }
-    } catch (e) {
-      debugPrint('[CloudPushService] Exception while syncing push subscription: $e');
+    } catch (e, stack) {
+      debugPrint('[CloudPushService] Exception while syncing push subscription: $e\n$stack');
       return false;
     }
   }

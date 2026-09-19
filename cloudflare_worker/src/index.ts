@@ -363,6 +363,7 @@ export default {
         const lngNum = Number(lng);
         const methodNum = Number(method);
         const locationKey = getLocationKey(latNum, lngNum, methodNum);
+        const safeTimezone = (timezone && typeof timezone === 'string' && timezone.trim().length > 0) ? timezone.trim() : 'UTC';
         const now = Date.now();
         const id = crypto.randomUUID();
 
@@ -395,7 +396,7 @@ export default {
           latNum,
           lngNum,
           locationKey,
-          timezone,
+          safeTimezone,
           city,
           methodNum,
           fajr ? 1 : 0,
@@ -409,8 +410,8 @@ export default {
 
         // Ensure ONLY today's prayer times are fetched and stored
         const today = new Date();
-        const { dateStr } = getDateInTimezone(today, timezone);
-        await getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, today, timezone);
+        const { dateStr } = getDateInTimezone(today, safeTimezone);
+        await getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, today, safeTimezone);
 
         // Remove any old/extra date rows for this location
         ctx.waitUntil(

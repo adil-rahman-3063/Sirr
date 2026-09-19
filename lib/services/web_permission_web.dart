@@ -1,60 +1,60 @@
 // ignore_for_file: uri_does_not_exist, avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:js' as js;
 import 'dart:js_util' as js_util;
+import 'package:flutter/foundation.dart';
 
 Future<bool> requestWebOrientationPermission() async {
   try {
-    final hasRequestPermission = js.context.hasProperty('requestDeviceOrientation');
-    if (hasRequestPermission) {
-      final dynamic resultPromise = js.context.callMethod('requestDeviceOrientation');
+    if (js_util.hasProperty(js_util.globalThis, 'requestDeviceOrientation')) {
+      final dynamic resultPromise = js_util.callMethod(js_util.globalThis, 'requestDeviceOrientation', []);
       final bool isGranted = await js_util.promiseToFuture(resultPromise);
       return isGranted;
     }
   } catch (e) {
-    // Suppress error
+    debugPrint('[web_permission] requestWebOrientationPermission error: $e');
   }
   return true;
 }
 
 Future<bool> requestWebNotificationPermission() async {
   try {
-    final hasRequest = js.context.hasProperty('requestWebNotificationPermission');
-    if (hasRequest) {
-      final dynamic resultPromise = js.context.callMethod('requestWebNotificationPermission');
+    if (js_util.hasProperty(js_util.globalThis, 'requestWebNotificationPermission')) {
+      final dynamic resultPromise = js_util.callMethod(js_util.globalThis, 'requestWebNotificationPermission', []);
       final bool isGranted = await js_util.promiseToFuture(resultPromise);
       return isGranted;
     }
   } catch (e) {
-    // Suppress error
+    debugPrint('[web_permission] requestWebNotificationPermission error: $e');
   }
   return false;
 }
 
 Future<bool> showWebNotification(String title, String body, [String? icon]) async {
   try {
-    final hasShow = js.context.hasProperty('showWebNotification');
-    if (hasShow) {
-      final dynamic resultPromise = js.context.callMethod('showWebNotification', [title, body, icon ?? 'icons/Icon-192.png']);
+    if (js_util.hasProperty(js_util.globalThis, 'showWebNotification')) {
+      final dynamic resultPromise = js_util.callMethod(
+        js_util.globalThis,
+        'showWebNotification',
+        [title, body, icon ?? 'icons/Icon-192.png'],
+      );
       final bool result = await js_util.promiseToFuture(resultPromise);
       return result;
     }
   } catch (e) {
-    // Suppress error
+    debugPrint('[web_permission] showWebNotification error: $e');
   }
   return false;
 }
 
 double? getWebCompassHeading() {
   try {
-    final hasFn = js.context.hasProperty('getDeviceCompassHeading');
-    if (hasFn) {
-      final dynamic val = js.context.callMethod('getDeviceCompassHeading');
+    if (js_util.hasProperty(js_util.globalThis, 'getDeviceCompassHeading')) {
+      final dynamic val = js_util.callMethod(js_util.globalThis, 'getDeviceCompassHeading', []);
       if (val != null) {
         return (val as num).toDouble();
       }
     }
   } catch (e) {
-    // Suppress error
+    debugPrint('[web_permission] getWebCompassHeading error: $e');
   }
   return null;
 }
@@ -62,16 +62,16 @@ double? getWebCompassHeading() {
 /// Request Web Push subscription with VAPID Public Key
 Future<String?> subscribeWebPush(String vapidPublicKey) async {
   try {
-    final hasFn = js.context.hasProperty('subscribeWebPush');
-    if (hasFn) {
-      final dynamic resultPromise = js.context.callMethod('subscribeWebPush', [vapidPublicKey]);
+    if (js_util.hasProperty(js_util.globalThis, 'subscribeWebPush')) {
+      final dynamic resultPromise = js_util.callMethod(js_util.globalThis, 'subscribeWebPush', [vapidPublicKey]);
       final dynamic result = await js_util.promiseToFuture(resultPromise);
+      debugPrint('[web_permission] subscribeWebPush result: $result');
       if (result != null) {
         return result.toString();
       }
     }
-  } catch (e) {
-    // Suppress error
+  } catch (e, stack) {
+    debugPrint('[web_permission] Error in subscribeWebPush: $e\n$stack');
   }
   return null;
 }
@@ -79,16 +79,16 @@ Future<String?> subscribeWebPush(String vapidPublicKey) async {
 /// Retrieve existing Web Push subscription JSON
 Future<String?> getWebPushSubscription() async {
   try {
-    final hasFn = js.context.hasProperty('getWebPushSubscription');
-    if (hasFn) {
-      final dynamic resultPromise = js.context.callMethod('getWebPushSubscription');
+    if (js_util.hasProperty(js_util.globalThis, 'getWebPushSubscription')) {
+      final dynamic resultPromise = js_util.callMethod(js_util.globalThis, 'getWebPushSubscription', []);
       final dynamic result = await js_util.promiseToFuture(resultPromise);
+      debugPrint('[web_permission] getWebPushSubscription result: $result');
       if (result != null) {
         return result.toString();
       }
     }
-  } catch (e) {
-    // Suppress error
+  } catch (e, stack) {
+    debugPrint('[web_permission] Error in getWebPushSubscription: $e\n$stack');
   }
   return null;
 }
@@ -96,14 +96,13 @@ Future<String?> getWebPushSubscription() async {
 /// Unsubscribe from Web Push
 Future<bool> unsubscribeWebPush() async {
   try {
-    final hasFn = js.context.hasProperty('unsubscribeWebPush');
-    if (hasFn) {
-      final dynamic resultPromise = js.context.callMethod('unsubscribeWebPush');
+    if (js_util.hasProperty(js_util.globalThis, 'unsubscribeWebPush')) {
+      final dynamic resultPromise = js_util.callMethod(js_util.globalThis, 'unsubscribeWebPush', []);
       final bool result = await js_util.promiseToFuture(resultPromise);
       return result;
     }
   } catch (e) {
-    // Suppress error
+    debugPrint('[web_permission] Error in unsubscribeWebPush: $e');
   }
   return true;
 }

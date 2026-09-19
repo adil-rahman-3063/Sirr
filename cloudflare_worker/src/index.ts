@@ -260,7 +260,23 @@ export default {
     // 0. Debug endpoint to inspect all D1 tables in browser
     if (url.pathname === '/api/debug' && request.method === 'GET') {
       try {
+        const now = new Date();
         const subs = await env.DB.prepare('SELECT id, endpoint, city, timezone, lat, lng, method, fajr, dhuhr, asr, maghrib, isha, last_prayer, updated_at FROM subscriptions').all();
+        
+        // Auto-refresh any outdated locations in daily_prayer_times to today's date
+        const existingTimes = await env.DB.prepare('SELECT * FROM daily_prayer_times').all<DailyPrayerTimesRow>();
+        if (existingTimes.results && existingTimes.results.length > 0) {
+          for (const row of existingTimes.results) {
+            const { dateStr } = getDateInTimezone(now, row.timezone);
+            if (row.date_str !== dateStr) {
+              await getOrFetchDailyPrayerTimes(env, row.location_key, row.lat, row.lng, row.method, now, row.timezone);
+              await env.DB.prepare('DELETE FROM daily_prayer_times WHERE location_key = ? AND date_str != ?')
+                .bind(row.location_key, dateStr)
+                .run();
+            }
+          }
+        }
+
         const times = await env.DB.prepare('SELECT * FROM daily_prayer_times').all();
         return jsonResponse({
           status: 'ok',

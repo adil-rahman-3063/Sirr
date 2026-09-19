@@ -147,11 +147,18 @@
       if (!('serviceWorker' in navigator)) return null;
       try {
         const swUrl = getSwUrl();
-        await navigator.serviceWorker.register(swUrl, { scope: './' });
+        let reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) {
+          reg = await navigator.serviceWorker.register(swUrl, { scope: './' });
+        }
         return await navigator.serviceWorker.ready;
       } catch (err) {
         console.error('[WebPush] Error getting active SW registration:', err);
-        return null;
+        try {
+          return await navigator.serviceWorker.ready;
+        } catch (_) {
+          return null;
+        }
       }
     }
 
@@ -195,6 +202,14 @@
         const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
         let subscription = await registration.pushManager.getSubscription();
 
+        if (subscription) {
+          const jsonCheck = subscription.toJSON();
+          if (!jsonCheck.keys || !jsonCheck.keys.p256dh || !jsonCheck.keys.auth) {
+            await subscription.unsubscribe().catch(() => {});
+            subscription = null;
+          }
+        }
+
         if (!subscription) {
           try {
             subscription = await registration.pushManager.subscribe({
@@ -202,7 +217,6 @@
               applicationServerKey: applicationServerKey
             });
           } catch (subErr) {
-            // Handle stale or mismatched subscription keys
             console.warn("[WebPush] Initial subscription failed, resetting stale registration:", subErr);
             const stale = await registration.pushManager.getSubscription();
             if (stale) {

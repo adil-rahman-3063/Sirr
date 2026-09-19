@@ -345,12 +345,20 @@ class _HomePageState extends State<HomePage> {
                             icon: Icons.block_rounded,
                             duration: const Duration(seconds: 6),
                           );
-                        } else {
+                        } else if (permState == 'default') {
                           AppSnackBar.showWarning(
                             context,
                             'Please allow notifications when prompted by your browser.',
                             title: 'Permission Required',
                             icon: Icons.notifications_paused_rounded,
+                          );
+                        } else {
+                          AppSnackBar.showWarning(
+                            context,
+                            'Could not complete push registration. Please check your internet connection and try again.',
+                            title: 'Push Notice',
+                            icon: Icons.cloud_off_rounded,
+                            duration: const Duration(seconds: 6),
                           );
                         }
                       }
@@ -1125,12 +1133,32 @@ class _HomePageState extends State<HomePage> {
     if (mounted) {
       final isNowEnabled = NotificationService().isNotificationEnabled(prayerName);
       if (willEnable && !isNowEnabled && kIsWeb) {
-        AppSnackBar.showWarning(
-          context,
-          'Please allow notifications when prompted by your browser.',
-          title: 'Permission Required',
-          icon: Icons.notifications_paused_rounded,
-        );
+        final permState = await getWebNotificationPermissionState();
+        if (!mounted) return;
+        if (permState == 'denied') {
+          AppSnackBar.showWarning(
+            context,
+            'Notifications are blocked in your browser. Click the lock icon in your address bar to allow permissions.',
+            title: 'Permission Blocked',
+            icon: Icons.block_rounded,
+            duration: const Duration(seconds: 6),
+          );
+        } else if (permState == 'default') {
+          AppSnackBar.showWarning(
+            context,
+            'Please allow notifications when prompted by your browser.',
+            title: 'Permission Required',
+            icon: Icons.notifications_paused_rounded,
+          );
+        } else {
+          AppSnackBar.showWarning(
+            context,
+            'Could not complete push registration. Please check your internet connection and try again.',
+            title: 'Push Notice',
+            icon: Icons.cloud_off_rounded,
+            duration: const Duration(seconds: 6),
+          );
+        }
       } else if (willEnable && isNowEnabled && kIsWeb) {
         try {
           final bool isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;

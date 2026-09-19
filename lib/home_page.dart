@@ -305,6 +305,20 @@ class _HomePageState extends State<HomePage> {
                   ),
                   onPressed: () async {
                     Navigator.of(dialogContext).pop();
+
+                    // Proactively request location permission if not already available
+                    if (_currentPosition == null) {
+                      try {
+                        final perm = await Geolocator.requestPermission();
+                        if (perm == LocationPermission.always || perm == LocationPermission.whileInUse) {
+                          _currentPosition = await Geolocator.getCurrentPosition();
+                          await _fetchInitialLocationAndData();
+                        }
+                      } catch (e) {
+                        debugPrint("Error requesting location on enable all: $e");
+                      }
+                    }
+
                     final success = await NotificationService().enableAllPrayers(
                       lat: _currentPosition?.latitude,
                       lng: _currentPosition?.longitude,
@@ -1086,6 +1100,18 @@ class _HomePageState extends State<HomePage> {
           );
         }
         return;
+      }
+    }
+
+    if (willEnable && _currentPosition == null) {
+      try {
+        final perm = await Geolocator.requestPermission();
+        if (perm == LocationPermission.always || perm == LocationPermission.whileInUse) {
+          _currentPosition = await Geolocator.getCurrentPosition();
+          await _fetchInitialLocationAndData();
+        }
+      } catch (e) {
+        debugPrint("Error requesting location on toggle: $e");
       }
     }
 

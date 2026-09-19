@@ -65,8 +65,8 @@ Future<String?> subscribeWebPush(String vapidPublicKey) async {
     if (js_util.hasProperty(js_util.globalThis, 'subscribeWebPush')) {
       final dynamic resultPromise = js_util.callMethod(js_util.globalThis, 'subscribeWebPush', [vapidPublicKey]);
       final dynamic result = await js_util.promiseToFuture(resultPromise);
-      debugPrint('[web_permission] subscribeWebPush result: $result');
       if (result != null) {
+        debugPrint('[web_permission] subscribeWebPush: success');
         return result.toString();
       }
     }
@@ -82,7 +82,6 @@ Future<String?> getWebPushSubscription() async {
     if (js_util.hasProperty(js_util.globalThis, 'getWebPushSubscription')) {
       final dynamic resultPromise = js_util.callMethod(js_util.globalThis, 'getWebPushSubscription', []);
       final dynamic result = await js_util.promiseToFuture(resultPromise);
-      debugPrint('[web_permission] getWebPushSubscription result: $result');
       if (result != null) {
         return result.toString();
       }

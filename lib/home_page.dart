@@ -19,6 +19,7 @@ import 'package:universal_html/html.dart' as html;
 import 'package:sirr/services/web_permission.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:sirr/widgets/glass_snack_bar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -301,24 +302,17 @@ class _HomePageState extends State<HomePage> {
                       setState(() {});
                       if (success) {
                         prefs.setBool('push_prompt_dismissed_v6', true);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '🔔 All 5 prayer notifications enabled successfully!',
-                              style: GoogleFonts.amiri(),
-                            ),
-                            duration: const Duration(seconds: 3),
-                          ),
+                        AppSnackBar.showSuccess(
+                          context,
+                          'All 5 prayer notifications enabled successfully!',
+                          title: 'Notifications Active',
+                          icon: Icons.notifications_active_rounded,
                         );
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '⚠️ Please allow notification permission in your browser prompt.',
-                              style: GoogleFonts.amiri(),
-                            ),
-                            duration: const Duration(seconds: 4),
-                          ),
+                        AppSnackBar.showWarning(
+                          context,
+                          'Please allow notification permission in your browser prompt.',
+                          title: 'Permission Required',
                         );
                       }
                     }
@@ -1066,24 +1060,19 @@ class _HomePageState extends State<HomePage> {
         final isIOS = userAgent.contains('iphone') || userAgent.contains('ipad') || userAgent.contains('ipod');
         
         if (isIOS && !isStandalone) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'To get notifications on iPhone, tap Share (⎋) and select "Add to Home Screen".',
-                style: GoogleFonts.amiri(),
-              ),
-              duration: const Duration(seconds: 4),
-            ),
+          AppSnackBar.showInfo(
+            context,
+            'To get notifications on iPhone, tap Share (⎋) and select "Add to Home Screen".',
+            title: 'iOS Setup',
+            icon: Icons.ios_share_rounded,
+            duration: const Duration(seconds: 5),
           );
         } else if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '🔔 $prayerName notification enabled! You will be alerted at prayer time.',
-                style: GoogleFonts.amiri(),
-              ),
-              duration: const Duration(seconds: 3),
-            ),
+          AppSnackBar.showSuccess(
+            context,
+            '$prayerName notification enabled! You will be alerted at prayer time.',
+            title: 'Prayer Alert Active',
+            icon: Icons.notifications_active_rounded,
           );
         }
       } catch (_) {}
@@ -1593,7 +1582,12 @@ class _HomePageState extends State<HomePage> {
     double userLon = 0.0;
     
     if (_currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location not available. Using default location (London).')));
+      AppSnackBar.showInfo(
+        context,
+        'Location not available. Using default location (London).',
+        title: 'Default Location',
+        icon: Icons.location_on_outlined,
+      );
       // Fallback to London coordinates so the UI still works
       userLat = 51.5074;
       userLon = -0.1278;
@@ -1706,16 +1700,12 @@ class _QiblaCompassModalState extends State<QiblaCompassModal> with SingleTicker
     await Future.delayed(const Duration(milliseconds: 800));
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '✦ Calibrated • Pointing to Kaaba (${widget.qiblaBearing.toStringAsFixed(1)}°)',
-            style: GoogleFonts.amiri(fontWeight: FontWeight.bold),
-          ),
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppSnackBar.showSuccess(
+        context,
+        'Pointing to Kaaba (${widget.qiblaBearing.toStringAsFixed(1)}°)',
+        title: 'Qibla Calibrated',
+        icon: Icons.explore_rounded,
+        duration: const Duration(seconds: 2),
       );
     }
   }

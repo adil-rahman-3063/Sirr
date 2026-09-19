@@ -4,10 +4,34 @@ import 'package:google_fonts/google_fonts.dart';
 enum PrayerPeriod { fajr, morning, asr, maghrib, isha }
 
 class ThemeProvider with ChangeNotifier {
-  PrayerPeriod _currentPeriod = PrayerPeriod.isha; // Default to night
+  PrayerPeriod _currentPeriod = _estimatePeriodFromTime(DateTime.now());
   bool _isDebugOverride = false;
 
   PrayerPeriod get currentPeriod => _currentPeriod;
+
+  /// Estimate current prayer period from current local time of day
+  static PrayerPeriod _estimatePeriodFromTime(DateTime now) {
+    final timeInMinutes = now.hour * 60 + now.minute;
+
+    // Fajr (Dawn): ~04:45 - 06:15
+    if (timeInMinutes >= 4 * 60 + 45 && timeInMinutes < 6 * 60 + 15) {
+      return PrayerPeriod.fajr;
+    }
+    // Morning/Dhuhr (Daylight): ~06:15 - 15:30
+    if (timeInMinutes >= 6 * 60 + 15 && timeInMinutes < 15 * 60 + 30) {
+      return PrayerPeriod.morning;
+    }
+    // Asr (Late Afternoon Golden): ~15:30 - 18:20
+    if (timeInMinutes >= 15 * 60 + 30 && timeInMinutes < 18 * 60 + 20) {
+      return PrayerPeriod.asr;
+    }
+    // Maghrib (Sunset Twilight): ~18:20 - 19:40
+    if (timeInMinutes >= 18 * 60 + 20 && timeInMinutes < 19 * 60 + 40) {
+      return PrayerPeriod.maghrib;
+    }
+    // Isha / Night: ~19:40 - 04:45
+    return PrayerPeriod.isha;
+  }
 
   void debugCycleTheme() {
     _isDebugOverride = true;
@@ -124,6 +148,11 @@ class ThemeProvider with ChangeNotifier {
       ),
       scaffoldBackgroundColor: background,
       cardColor: surface,
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
     );
 
     return baseTheme.copyWith(

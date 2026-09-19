@@ -277,10 +277,11 @@ async function getOrFetchDailyPrayerTimes(
         if (json.data.meta?.timezone) {
           detectedTimezone = json.data.meta.timezone;
         }
+        console.log(`[Aladhan API Live Fetch] Successfully fetched timings from API for ${locationKey} (${dateApiStr}):`, JSON.stringify(timings));
       }
     }
   } catch (err) {
-    console.error(`Failed to fetch from Aladhan API for ${locationKey}:`, err);
+    console.error(`[Aladhan API Fetch Error] Failed to fetch from Aladhan API for ${locationKey}:`, err);
   }
 
   // Fallback if API fails
@@ -381,12 +382,12 @@ export default {
           }
         }
 
-        const times = await env.DB.prepare('SELECT * FROM daily_prayer_times').all();
+        const times = await env.DB.prepare('SELECT * FROM daily_prayer_times').all<DailyPrayerTimesRow>();
 
         // Enrich subscriptions with localized current time & target prayer timings
         const enrichedSubs = subs.map((sub) => {
           const { dateStr, currentTimeStr, timezone: safeTz } = getDateInTimezone(now, sub.timezone, sub.lat, sub.lng);
-          const cachedTimes = (times.results as DailyPrayerTimesRow[])?.find(
+          const cachedTimes = (times.results || []).find(
             (t) => t.location_key === sub.location_key && t.date_str === dateStr
           );
           return {

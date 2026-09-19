@@ -72,8 +72,100 @@ function sanitizeTime(timeStr: string): string {
   return timeStr.split(' ')[0].trim();
 }
 
+export function normalizeTimezone(tz: string | undefined | null, lat?: number, lng?: number): string {
+  if (!tz || typeof tz !== 'string' || tz.trim().length === 0) {
+    if (lat !== undefined && lng !== undefined) {
+      return guessTimezoneFromCoordinates(lat, lng);
+    }
+    return 'UTC';
+  }
+
+  const clean = tz.trim();
+
+  // Test if it's already a valid IANA timezone in Intl
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: clean });
+    return clean;
+  } catch (_) {
+    // Not a valid IANA identifier, map from common OS names
+  }
+
+  const lower = clean.toLowerCase();
+
+  const MAP: Record<string, string> = {
+    'india standard time': 'Asia/Kolkata',
+    'ist': 'Asia/Kolkata',
+    'arabian standard time': 'Asia/Riyadh',
+    'saudi arabia standard time': 'Asia/Riyadh',
+    'ast': 'Asia/Riyadh',
+    'gulf standard time': 'Asia/Dubai',
+    'gst': 'Asia/Dubai',
+    'pakistan standard time': 'Asia/Karachi',
+    'pkt': 'Asia/Karachi',
+    'bangladesh standard time': 'Asia/Dhaka',
+    'bst': 'Asia/Dhaka',
+    'singapore standard time': 'Asia/Singapore',
+    'sgt': 'Asia/Singapore',
+    'malay peninsula standard time': 'Asia/Kuala_Lumpur',
+    'indonesia standard time': 'Asia/Jakarta',
+    'w. europe standard time': 'Europe/Paris',
+    'gmt standard time': 'Europe/London',
+    'greenwich standard time': 'Europe/London',
+    'eastern standard time': 'America/New_York',
+    'est': 'America/New_York',
+    'central standard time': 'America/Chicago',
+    'cst': 'America/Chicago',
+    'mountain standard time': 'America/Denver',
+    'mst': 'America/Denver',
+    'pacific standard time': 'America/Los_Angeles',
+    'pst': 'America/Los_Angeles',
+    'egypt standard time': 'Africa/Cairo',
+    'e. africa standard time': 'Africa/Nairobi',
+    'turkey standard time': 'Europe/Istanbul',
+    'tokyo standard time': 'Asia/Tokyo',
+    'jst': 'Asia/Tokyo',
+    'china standard time': 'Asia/Shanghai',
+  };
+
+  for (const [key, targetTz] of Object.entries(MAP)) {
+    if (lower.includes(key)) {
+      return targetTz;
+    }
+  }
+
+  if (lat !== undefined && lng !== undefined) {
+    return guessTimezoneFromCoordinates(lat, lng);
+  }
+
+  return 'UTC';
+}
+
+function guessTimezoneFromCoordinates(lat: number, lng: number): string {
+  // India
+  if (lat >= 6 && lat <= 38 && lng >= 68 && lng <= 98) return 'Asia/Kolkata';
+  // Saudi Arabia
+  if (lat >= 16 && lat <= 33 && lng >= 34 && lng <= 56) return 'Asia/Riyadh';
+  // UAE / Oman
+  if (lat >= 22 && lat <= 27 && lng >= 51 && lng <= 60) return 'Asia/Dubai';
+  // Egypt
+  if (lat >= 21 && lat <= 32 && lng >= 24 && lng <= 37) return 'Africa/Cairo';
+  // UK
+  if (lat >= 49 && lat <= 61 && lng >= -9 && lng <= 2) return 'Europe/London';
+  // Turkey
+  if (lat >= 35 && lat <= 43 && lng >= 25 && lng <= 45) return 'Europe/Istanbul';
+  // Pakistan
+  if (lat >= 23 && lat <= 37 && lng >= 60 && lng <= 78) return 'Asia/Karachi';
+  // Bangladesh
+  if (lat >= 20 && lat <= 27 && lng >= 88 && lng <= 93) return 'Asia/Dhaka';
+  // Malaysia / Singapore
+  if (lat >= 1 && lat <= 8 && lng >= 99 && lng <= 120) return 'Asia/Kuala_Lumpur';
+
+  return 'UTC';
+}
+
 // Get current date formatted in target timezone (YYYY-MM-DD)
-function getDateInTimezone(date: Date, timezone: string): { dateStr: string; dateApiStr: string; currentTimeStr: string } {
+function getDateInTimezone(date: Date, rawTimezone: string, lat?: number, lng?: number): { dateStr: string; dateApiStr: string; currentTimeStr: string; timezone: string } {
+  const timezone = normalizeTimezone(rawTimezone, lat, lng);
   try {
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,
@@ -94,7 +186,7 @@ function getDateInTimezone(date: Date, timezone: string): { dateStr: string; dat
     });
     const currentTimeStr = timeFormatter.format(date); // HH:mm
 
-    return { dateStr, dateApiStr, currentTimeStr };
+    return { dateStr, dateApiStr, currentTimeStr, timezone };
   } catch {
     // Fallback to UTC
     const dateStr = date.toISOString().slice(0, 10);
@@ -102,7 +194,7 @@ function getDateInTimezone(date: Date, timezone: string): { dateStr: string; dat
     const dateApiStr = `${day}-${month}-${year}`;
     const hours = String(date.getUTCHours()).padStart(2, '0');
     const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    return { dateStr, dateApiStr, currentTimeStr: `${hours}:${minutes}` };
+    return { dateStr, dateApiStr, currentTimeStr: `${hours}:${minutes}`, timezone: 'UTC' };
   }
 }
 
@@ -149,7 +241,7 @@ async function getOrFetchDailyPrayerTimes(
   date: Date,
   timezone: string
 ): Promise<DailyPrayerTimesRow | null> {
-  const { dateStr, dateApiStr } = getDateInTimezone(date, timezone);
+  const { dateStr, dateApiStr } = getDateInTimezone(date, timezone, lat, lng);
 
   // 1. Check local D1 cache first
   const cached = await env.DB.prepare(
@@ -261,15 +353,27 @@ export default {
     if (url.pathname === '/api/debug' && request.method === 'GET') {
       try {
         const now = new Date();
-        const subs = await env.DB.prepare('SELECT id, endpoint, city, timezone, lat, lng, method, fajr, dhuhr, asr, maghrib, isha, last_prayer, updated_at FROM subscriptions').all();
-        
+        const subsResult = await env.DB.prepare('SELECT * FROM subscriptions').all<SubscriptionRow>();
+        const subs = subsResult.results || [];
+
+        // Auto-migrate any unnormalized timezones in subscriptions table
+        for (const sub of subs) {
+          const normalized = normalizeTimezone(sub.timezone, sub.lat, sub.lng);
+          if (sub.timezone !== normalized) {
+            await env.DB.prepare('UPDATE subscriptions SET timezone = ? WHERE id = ?')
+              .bind(normalized, sub.id)
+              .run();
+            sub.timezone = normalized;
+          }
+        }
+
         // Auto-refresh any outdated locations in daily_prayer_times to today's date
         const existingTimes = await env.DB.prepare('SELECT * FROM daily_prayer_times').all<DailyPrayerTimesRow>();
         if (existingTimes.results && existingTimes.results.length > 0) {
           for (const row of existingTimes.results) {
-            const { dateStr } = getDateInTimezone(now, row.timezone);
-            if (row.date_str !== dateStr) {
-              await getOrFetchDailyPrayerTimes(env, row.location_key, row.lat, row.lng, row.method, now, row.timezone);
+            const { dateStr, timezone: safeTz } = getDateInTimezone(now, row.timezone, row.lat, row.lng);
+            if (row.date_str !== dateStr || row.timezone !== safeTz) {
+              await getOrFetchDailyPrayerTimes(env, row.location_key, row.lat, row.lng, row.method, now, safeTz);
               await env.DB.prepare('DELETE FROM daily_prayer_times WHERE location_key = ? AND date_str != ?')
                 .bind(row.location_key, dateStr)
                 .run();
@@ -278,11 +382,45 @@ export default {
         }
 
         const times = await env.DB.prepare('SELECT * FROM daily_prayer_times').all();
+
+        // Enrich subscriptions with localized current time & target prayer timings
+        const enrichedSubs = subs.map((sub) => {
+          const { dateStr, currentTimeStr, timezone: safeTz } = getDateInTimezone(now, sub.timezone, sub.lat, sub.lng);
+          const cachedTimes = (times.results as DailyPrayerTimesRow[])?.find(
+            (t) => t.location_key === sub.location_key && t.date_str === dateStr
+          );
+          return {
+            id: sub.id,
+            city: sub.city,
+            timezone: safeTz,
+            coordinates: `${sub.lat.toFixed(4)}, ${sub.lng.toFixed(4)}`,
+            localDate: dateStr,
+            localTime: currentTimeStr,
+            enabledPrayers: {
+              fajr: sub.fajr === 1,
+              dhuhr: sub.dhuhr === 1,
+              asr: sub.asr === 1,
+              maghrib: sub.maghrib === 1,
+              isha: sub.isha === 1,
+            },
+            todayTimings: cachedTimes ? {
+              fajr: cachedTimes.fajr,
+              sunrise: cachedTimes.sunrise,
+              dhuhr: cachedTimes.dhuhr,
+              asr: cachedTimes.asr,
+              maghrib: cachedTimes.maghrib,
+              isha: cachedTimes.isha,
+            } : null,
+            lastPrayerNotified: sub.last_prayer,
+            updatedAt: new Date(sub.updated_at).toISOString(),
+          };
+        });
+
         return jsonResponse({
           status: 'ok',
-          time: new Date().toISOString(),
-          totalSubscriptions: subs.results?.length ?? 0,
-          subscriptions: subs.results || [],
+          serverUtcTime: now.toISOString(),
+          totalSubscriptions: subs.length,
+          subscriptions: enrichedSubs,
           totalCachedDays: times.results?.length ?? 0,
           dailyPrayerTimes: times.results || [],
         });
@@ -363,7 +501,7 @@ export default {
         const lngNum = Number(lng);
         const methodNum = Number(method);
         const locationKey = getLocationKey(latNum, lngNum, methodNum);
-        const safeTimezone = (timezone && typeof timezone === 'string' && timezone.trim().length > 0) ? timezone.trim() : 'UTC';
+        const safeTimezone = normalizeTimezone(timezone, latNum, lngNum);
         const now = Date.now();
         const id = crypto.randomUUID();
 
@@ -410,7 +548,7 @@ export default {
 
         // Ensure ONLY today's prayer times are fetched and stored
         const today = new Date();
-        const { dateStr } = getDateInTimezone(today, safeTimezone);
+        const { dateStr } = getDateInTimezone(today, safeTimezone, latNum, lngNum);
         await getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, today, safeTimezone);
 
         // Remove any old/extra date rows for this location
@@ -566,7 +704,7 @@ export default {
 
     for (const loc of locations) {
       try {
-        const { dateStr } = getDateInTimezone(now, loc.timezone);
+        const { dateStr, timezone: safeLocTimezone } = getDateInTimezone(now, loc.timezone, loc.lat, loc.lng);
         const dailyTimes = await getOrFetchDailyPrayerTimes(
           env,
           loc.location_key,
@@ -574,7 +712,7 @@ export default {
           loc.lng,
           loc.method,
           now,
-          loc.timezone
+          safeLocTimezone
         );
         if (dailyTimes) {
           locationTimesMap.set(loc.location_key, dailyTimes);
@@ -602,7 +740,15 @@ export default {
         const dailyTimes = locationTimesMap.get(sub.location_key);
         if (!dailyTimes) continue;
 
-        const { dateStr, currentTimeStr } = getDateInTimezone(now, sub.timezone);
+        const { dateStr, currentTimeStr, timezone: safeTz } = getDateInTimezone(now, sub.timezone, sub.lat, sub.lng);
+        if (sub.timezone !== safeTz) {
+          ctx.waitUntil(
+            env.DB.prepare('UPDATE subscriptions SET timezone = ? WHERE id = ?')
+              .bind(safeTz, sub.id)
+              .run()
+          );
+          sub.timezone = safeTz;
+        }
 
         const prayers = [
           { name: 'Fajr', nameAr: 'الفجر', time: dailyTimes.fajr, enabled: sub.fajr === 1 },

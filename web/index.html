@@ -56,6 +56,14 @@
       return window.currentDeviceHeading;
     };
 
+    window.getDeviceIanaTimezone = function() {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      } catch (e) {
+        return 'UTC';
+      }
+    };
+
     window.requestDeviceOrientation = async function() {
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {

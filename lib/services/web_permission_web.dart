@@ -73,6 +73,20 @@ double? getWebCompassHeading() {
   return null;
 }
 
+String getDeviceIanaTimezone() {
+  try {
+    if (js_util.hasProperty(js_util.globalThis, 'getDeviceIanaTimezone')) {
+      final dynamic val = js_util.callMethod(js_util.globalThis, 'getDeviceIanaTimezone', []);
+      if (val != null && val.toString().isNotEmpty) {
+        return val.toString();
+      }
+    }
+  } catch (e) {
+    debugPrint('[web_permission] getDeviceIanaTimezone error: $e');
+  }
+  return 'UTC';
+}
+
 /// Request Web Push subscription with VAPID Public Key
 Future<String?> subscribeWebPush(String vapidPublicKey) async {
   try {

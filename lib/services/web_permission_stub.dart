@@ -18,6 +18,10 @@ double? getWebCompassHeading() {
   return null;
 }
 
+String getDeviceIanaTimezone() {
+  return 'UTC';
+}
+
 Future<String?> subscribeWebPush(String vapidPublicKey) async {
   return null;
 }

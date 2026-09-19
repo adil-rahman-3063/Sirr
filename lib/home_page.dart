@@ -1167,19 +1167,24 @@ class _HomePageState extends State<HomePage> {
                   DateFormat('h:mm a').format(time).toLowerCase(),
                   style: GoogleFonts.amiri(fontSize: 14, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onPrimary),
                 ),
+                const SizedBox(width: 10),
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: () => _handleNotificationToggle(name),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 500),
-                    transitionBuilder: (Widget child, Animation<double> animation) {
-                      final curvedAnimation = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
-                      return ScaleTransition(scale: curvedAnimation, child: FadeTransition(opacity: animation, child: child));
-                    },
-                    child: Icon(
-                      NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
-                      key: ValueKey<bool>(NotificationService().isNotificationEnabled(name)),
-                      size: 15,
-                      color: Theme.of(context).colorScheme.onPrimary,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 500),
+                      transitionBuilder: (Widget child, Animation<double> animation) {
+                        final curvedAnimation = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
+                        return ScaleTransition(scale: curvedAnimation, child: FadeTransition(opacity: animation, child: child));
+                      },
+                      child: Icon(
+                        NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
+                        key: ValueKey<bool>(NotificationService().isNotificationEnabled(name)),
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      ),
                     ),
                   ),
                 ),
@@ -1214,19 +1219,24 @@ class _HomePageState extends State<HomePage> {
                 DateFormat('h:mm a').format(time).toLowerCase(),
                 style: GoogleFonts.amiri(fontSize: 14, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
+              const SizedBox(width: 10),
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => _handleNotificationToggle(name),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 500),
-                  transitionBuilder: (Widget child, Animation<double> animation) {
-                    final curvedAnimation = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
-                    return ScaleTransition(scale: curvedAnimation, child: FadeTransition(opacity: animation, child: child));
-                  },
-                  child: Icon(
-                    NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
-                    key: ValueKey<bool>(NotificationService().isNotificationEnabled(name)),
-                    size: 15,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 500),
+                    transitionBuilder: (Widget child, Animation<double> animation) {
+                      final curvedAnimation = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
+                      return ScaleTransition(scale: curvedAnimation, child: FadeTransition(opacity: animation, child: child));
+                    },
+                    child: Icon(
+                      NotificationService().isNotificationEnabled(name) ? Icons.notifications_active : Icons.notifications_off,
+                      key: ValueKey<bool>(NotificationService().isNotificationEnabled(name)),
+                      size: 16,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),

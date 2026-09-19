@@ -15,3 +15,7 @@ database_id = "2a724d2c-41d0-45a3-968f-5e683be3896a"
 [vars]
 VAPID_PUBLIC_KEY = "BJBckAgVOJ0kC2ri3PdbHqhzRfc2DFMBoqJRG_oEji7RYElJaU5r4y7TK2d64_SHTTBmXVMftw3w-xIMsSGYgTM"
 VAPID_SUBJECT = "mailto:admin@sirr.pages.dev"
+
+[observability.logs]
+enabled = true
+invocation_logs = true

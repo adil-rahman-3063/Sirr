@@ -108,7 +108,13 @@ class NotificationService {
     _lastLat = _prefs.getDouble('last_known_lat');
     _lastLng = _prefs.getDouble('last_known_lng');
     _lastCity = _prefs.getString('last_known_city');
-    _lastTimezone = _prefs.getString('last_known_timezone') ?? DateTime.now().timeZoneName;
+    final savedTz = _prefs.getString('last_known_timezone');
+    if (savedTz != null && !savedTz.contains('Standard Time')) {
+      _lastTimezone = savedTz;
+    } else {
+      _lastTimezone = getDeviceIanaTimezone();
+      _prefs.setString('last_known_timezone', _lastTimezone!);
+    }
     _lastMethod = _prefs.getInt('last_known_method') ?? 3;
   }
 
@@ -152,7 +158,7 @@ class NotificationService {
   }) {
     _lastLat = lat;
     _lastLng = lng;
-    _lastTimezone = timezone ?? DateTime.now().timeZoneName;
+    _lastTimezone = timezone ?? getDeviceIanaTimezone();
     _lastCity = city;
     _lastMethod = method;
 
@@ -187,7 +193,7 @@ class NotificationService {
     final activeLng = lng ?? _lastLng ?? 39.8262;
     _lastLat = activeLat;
     _lastLng = activeLng;
-    if (timezone != null) _lastTimezone = timezone;
+    _lastTimezone = timezone ?? _lastTimezone ?? getDeviceIanaTimezone();
     if (city != null) _lastCity = city;
     if (method != null) _lastMethod = method;
 
@@ -203,7 +209,7 @@ class NotificationService {
       final synced = await CloudPushService().syncSubscription(
         lat: _lastLat!,
         lng: _lastLng!,
-        timezone: _lastTimezone ?? DateTime.now().timeZoneName,
+        timezone: _lastTimezone ?? getDeviceIanaTimezone(),
         city: _lastCity,
         method: _lastMethod,
         enabledPrayers: targetSet,
@@ -240,7 +246,7 @@ class NotificationService {
     final activeLng = lng ?? _lastLng ?? 39.8262;
     _lastLat = activeLat;
     _lastLng = activeLng;
-    if (timezone != null) _lastTimezone = timezone;
+    _lastTimezone = timezone ?? _lastTimezone ?? getDeviceIanaTimezone();
     if (city != null) _lastCity = city;
     if (method != null) _lastMethod = method;
 
@@ -250,7 +256,7 @@ class NotificationService {
       final synced = await CloudPushService().syncSubscription(
         lat: _lastLat!,
         lng: _lastLng!,
-        timezone: _lastTimezone ?? DateTime.now().timeZoneName,
+        timezone: _lastTimezone ?? getDeviceIanaTimezone(),
         city: _lastCity,
         method: _lastMethod,
         enabledPrayers: prayerSet,

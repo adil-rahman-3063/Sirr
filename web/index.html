@@ -158,13 +158,21 @@
       return outputArray;
     }
 
+    window.getNotificationPermissionState = function() {
+      if (!('Notification' in window)) return 'unsupported';
+      return Notification.permission; // 'granted', 'denied', or 'default'
+    };
+
     window.subscribeWebPush = async function(vapidPublicKey) {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
         console.warn("[WebPush] PushManager not supported in this browser");
         return null;
       }
       try {
-        const permission = await Notification.requestPermission();
+        let permission = Notification.permission;
+        if (permission !== 'granted') {
+          permission = await Notification.requestPermission();
+        }
         if (permission !== 'granted') {
           console.warn("[WebPush] Notification permission not granted:", permission);
           return null;
@@ -176,13 +184,27 @@
           return null;
         }
 
+        const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
         let subscription = await registration.pushManager.getSubscription();
+
         if (!subscription) {
-          const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
-          subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: applicationServerKey
-          });
+          try {
+            subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: applicationServerKey
+            });
+          } catch (subErr) {
+            // Handle stale or mismatched subscription keys
+            console.warn("[WebPush] Initial subscription failed, resetting stale registration:", subErr);
+            const stale = await registration.pushManager.getSubscription();
+            if (stale) {
+              await stale.unsubscribe().catch(() => {});
+            }
+            subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: applicationServerKey
+            });
+          }
         }
 
         const json = subscription.toJSON();

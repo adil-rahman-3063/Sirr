@@ -6,6 +6,10 @@ Future<bool> requestWebNotificationPermission() async {
   return true;
 }
 
+Future<String> getWebNotificationPermissionState() async {
+  return 'granted';
+}
+
 Future<bool> showWebNotification(String title, String body, [String? icon]) async {
   return true;
 }

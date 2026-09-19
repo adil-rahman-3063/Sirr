@@ -309,11 +309,24 @@ class _HomePageState extends State<HomePage> {
                           icon: Icons.notifications_active_rounded,
                         );
                       } else {
-                        AppSnackBar.showWarning(
-                          context,
-                          'Please allow notification permission in your browser prompt.',
-                          title: 'Permission Required',
-                        );
+                        final permState = await getWebNotificationPermissionState();
+                        if (!mounted) return;
+                        if (permState == 'denied') {
+                          AppSnackBar.showWarning(
+                            context,
+                            'Notifications are blocked in your browser. Click the lock icon in your address bar to allow permissions.',
+                            title: 'Permission Blocked',
+                            icon: Icons.block_rounded,
+                            duration: const Duration(seconds: 6),
+                          );
+                        } else {
+                          AppSnackBar.showWarning(
+                            context,
+                            'Please allow notifications when prompted by your browser.',
+                            title: 'Permission Required',
+                            icon: Icons.notifications_paused_rounded,
+                          );
+                        }
                       }
                     }
                   },
@@ -1047,38 +1060,70 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _handleNotificationToggle(String prayerName) async {
     final willEnable = !NotificationService().isNotificationEnabled(prayerName);
+
+    if (willEnable && kIsWeb) {
+      final permState = await getWebNotificationPermissionState();
+      if (permState == 'denied') {
+        if (mounted) {
+          AppSnackBar.showWarning(
+            context,
+            'Notifications are blocked in your browser. Click the lock icon in your address bar to allow permissions.',
+            title: 'Permission Blocked',
+            icon: Icons.block_rounded,
+            duration: const Duration(seconds: 6),
+          );
+        }
+        return;
+      }
+    }
+
     await NotificationService().toggleNotification(
       prayerName,
       lat: _currentPosition?.latitude,
       lng: _currentPosition?.longitude,
       city: _locationName,
     );
-    if (willEnable && kIsWeb && mounted) {
-      try {
-        final bool isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;
-        final userAgent = html.window.navigator.userAgent.toLowerCase();
-        final isIOS = userAgent.contains('iphone') || userAgent.contains('ipad') || userAgent.contains('ipod');
-        
-        if (isIOS && !isStandalone) {
-          AppSnackBar.showInfo(
-            context,
-            'To get notifications on iPhone, tap Share (⎋) and select "Add to Home Screen".',
-            title: 'iOS Setup',
-            icon: Icons.ios_share_rounded,
-            duration: const Duration(seconds: 5),
-          );
-        } else if (mounted) {
-          AppSnackBar.showSuccess(
-            context,
-            '$prayerName notification enabled! You will be alerted at prayer time.',
-            title: 'Prayer Alert Active',
-            icon: Icons.notifications_active_rounded,
-          );
-        }
-      } catch (_) {}
-    }
-    
+
     if (mounted) {
+      final isNowEnabled = NotificationService().isNotificationEnabled(prayerName);
+      if (willEnable && !isNowEnabled && kIsWeb) {
+        AppSnackBar.showWarning(
+          context,
+          'Please allow notifications when prompted by your browser.',
+          title: 'Permission Required',
+          icon: Icons.notifications_paused_rounded,
+        );
+      } else if (willEnable && isNowEnabled && kIsWeb) {
+        try {
+          final bool isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;
+          final userAgent = html.window.navigator.userAgent.toLowerCase();
+          final isIOS = userAgent.contains('iphone') || userAgent.contains('ipad') || userAgent.contains('ipod');
+
+          if (isIOS && !isStandalone) {
+            AppSnackBar.showInfo(
+              context,
+              'To get notifications on iPhone, tap Share (⎋) and select "Add to Home Screen".',
+              title: 'iOS Setup',
+              icon: Icons.ios_share_rounded,
+              duration: const Duration(seconds: 5),
+            );
+          } else {
+            AppSnackBar.showSuccess(
+              context,
+              '$prayerName notification enabled! You will be alerted at prayer time.',
+              title: 'Prayer Alert Active',
+              icon: Icons.notifications_active_rounded,
+            );
+          }
+        } catch (_) {}
+      } else if (!willEnable) {
+        AppSnackBar.showInfo(
+          context,
+          '$prayerName notification turned off.',
+          title: 'Notification Disabled',
+          icon: Icons.notifications_off_rounded,
+        );
+      }
       setState(() {});
     }
   }

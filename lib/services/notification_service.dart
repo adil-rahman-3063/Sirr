@@ -149,7 +149,7 @@ class NotificationService {
     }
   }
 
-  Future<void> toggleNotification(
+  Future<bool> toggleNotification(
     String prayerName, {
     double? lat,
     double? lng,
@@ -186,8 +186,9 @@ class NotificationService {
         _enabledPrayers.clear();
         _enabledPrayers.addAll(targetSet);
         await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
+        return true;
       }
-      return;
+      return false;
     }
 
     _enabledPrayers.clear();
@@ -199,6 +200,7 @@ class NotificationService {
     if (!kIsWeb && _lastCache != null) {
       await schedulePrayerNotifications(_lastCache!);
     }
+    return true;
   }
 
   Future<bool> enableAllPrayers({

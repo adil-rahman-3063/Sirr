@@ -28,6 +28,20 @@ Future<bool> requestWebNotificationPermission() async {
   return false;
 }
 
+Future<String> getWebNotificationPermissionState() async {
+  try {
+    if (js_util.hasProperty(js_util.globalThis, 'getNotificationPermissionState')) {
+      final dynamic result = js_util.callMethod(js_util.globalThis, 'getNotificationPermissionState', []);
+      if (result != null) {
+        return result.toString();
+      }
+    }
+  } catch (e) {
+    debugPrint('[web_permission] getWebNotificationPermissionState error: $e');
+  }
+  return 'default';
+}
+
 Future<bool> showWebNotification(String title, String body, [String? icon]) async {
   try {
     if (js_util.hasProperty(js_util.globalThis, 'showWebNotification')) {

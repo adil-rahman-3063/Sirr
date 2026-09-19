@@ -145,6 +145,7 @@ class NotificationService {
         await _prefs.remove('push_prompt_dismissed_v5');
         await _prefs.remove('push_prompt_dismissed_v6');
         await _prefs.remove('push_prompt_dismissed_v7');
+        await CloudPushService().unsubscribe();
         return false;
       }
     } catch (e) {

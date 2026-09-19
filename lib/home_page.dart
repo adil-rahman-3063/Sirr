@@ -20,6 +20,7 @@ import 'package:sirr/services/web_permission.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:sirr/widgets/glass_snack_bar.dart';
+import 'package:sirr/config/app_info.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -1248,42 +1249,67 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildFooter() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.only(top: 10.0, bottom: 30.0),
       child: Center(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () async {
-            final Uri url = Uri.parse('https://adilrahman.cc');
-            if (await canLaunchUrl(url)) {
-              await launchUrl(url, mode: LaunchMode.externalApplication);
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Developed by ',
-                  style: GoogleFonts.amiri(
-                    fontSize: 14,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                  ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () async {
+                final Uri url = Uri.parse(AppInfo.authorUrl);
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Developed by ',
+                      style: GoogleFonts.amiri(
+                        fontSize: 14,
+                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    Text(
+                      AppInfo.author,
+                      style: GoogleFonts.amiri(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                        decoration: TextDecoration.underline,
+                        decorationColor: theme.colorScheme.primary.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  'Adil Rahman',
-                  style: GoogleFonts.amiri(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                    decoration: TextDecoration.underline,
-                    decorationColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(height: 2),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: isDark ? 0.08 : 0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'v${AppInfo.version}',
+                style: GoogleFonts.outfit(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.5,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -84,7 +84,7 @@ class NotificationService {
     _isInitialized = true;
   }
 
-  static const String _kNotificationMigrationKey = 'push_v6_force_reset_migration';
+  static const String _kNotificationMigrationKey = 'push_v7_fresh_start_migration';
 
   void _loadSettings() {
     final hasMigrated = _prefs.getBool(_kNotificationMigrationKey) ?? false;
@@ -95,6 +95,7 @@ class NotificationService {
       _prefs.remove('push_prompt_dismissed_v4');
       _prefs.remove('push_prompt_dismissed_v5');
       _prefs.remove('push_prompt_dismissed_v6');
+      _prefs.remove('push_prompt_dismissed_v7');
       _enabledPrayers.clear();
       _prefs.setBool(_kNotificationMigrationKey, true);
     } else {
@@ -133,13 +134,17 @@ class NotificationService {
         _enabledPrayers.clear();
         _enabledPrayers.addAll(remotePrayers);
         await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
-        await _prefs.setBool('push_prompt_dismissed_v6', true);
+        await _prefs.setBool('push_prompt_dismissed_v7', true);
         return true;
       } else {
-        // Device is not in D1 - reset local state to start from beginning!
+        // Device is not in D1 - reset local state so user starts completely fresh!
         _enabledPrayers.clear();
         await _prefs.remove('enabledPrayers');
+        await _prefs.remove('last_push_endpoint');
+        await _prefs.remove('push_prompt_dismissed_v4');
+        await _prefs.remove('push_prompt_dismissed_v5');
         await _prefs.remove('push_prompt_dismissed_v6');
+        await _prefs.remove('push_prompt_dismissed_v7');
         return false;
       }
     } catch (e) {

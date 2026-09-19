@@ -209,7 +209,7 @@ class _HomePageState extends State<HomePage> {
         }
 
         // If not in database, user starts fresh
-        final bool alreadyPrompted = prefs.getBool('push_prompt_dismissed_v6') ?? false;
+        final bool alreadyPrompted = prefs.getBool('push_prompt_dismissed_v7') ?? false;
         if (alreadyPrompted || NotificationService().enabledPrayers.isNotEmpty) {
           return;
         }
@@ -282,7 +282,7 @@ class _HomePageState extends State<HomePage> {
             actions: [
               TextButton(
                 onPressed: () {
-                  prefs.setBool('push_prompt_dismissed_v6', true);
+                  prefs.setBool('push_prompt_dismissed_v7', true);
                   Navigator.of(dialogContext).pop();
                 },
                 child: Text(
@@ -312,7 +312,7 @@ class _HomePageState extends State<HomePage> {
                     if (mounted) {
                       setState(() {});
                       if (success) {
-                        prefs.setBool('push_prompt_dismissed_v6', true);
+                        prefs.setBool('push_prompt_dismissed_v7', true);
                         AppSnackBar.showSuccess(
                           context,
                           'All 5 prayer notifications enabled successfully!',

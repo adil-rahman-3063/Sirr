@@ -464,6 +464,10 @@ export default {
     };
 
     const now = new Date();
+    const todayUtc = now.toISOString().slice(0, 10);
+
+    // Automatically purge old cached dates older than today
+    ctx.waitUntil(env.DB.prepare('DELETE FROM daily_prayer_times WHERE date_str < ?').bind(todayUtc).run());
 
     // 1. Fetch distinct location keys that have active subscribers
     const locationsResult = await env.DB.prepare(`

@@ -84,7 +84,7 @@ class NotificationService {
     _isInitialized = true;
   }
 
-  static const String _kNotificationMigrationKey = 'push_v5_force_reset_migration';
+  static const String _kNotificationMigrationKey = 'push_v6_force_reset_migration';
 
   void _loadSettings() {
     final hasMigrated = _prefs.getBool(_kNotificationMigrationKey) ?? false;
@@ -94,6 +94,7 @@ class NotificationService {
       _prefs.remove('last_push_endpoint');
       _prefs.remove('push_prompt_dismissed_v4');
       _prefs.remove('push_prompt_dismissed_v5');
+      _prefs.remove('push_prompt_dismissed_v6');
       _enabledPrayers.clear();
       _prefs.setBool(_kNotificationMigrationKey, true);
     } else {
@@ -164,25 +165,35 @@ class NotificationService {
     if (city != null) _lastCity = city;
     if (method != null) _lastMethod = method;
 
-    if (_enabledPrayers.contains(prayerName)) {
-      _enabledPrayers.remove(prayerName);
+    final targetSet = Set<String>.from(_enabledPrayers);
+    if (targetSet.contains(prayerName)) {
+      targetSet.remove(prayerName);
     } else {
-      _enabledPrayers.add(prayerName);
-      await requestPermissions();
+      targetSet.add(prayerName);
     }
-    await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
 
     // Sync with Cloudflare Worker for background Web Push
     if (kIsWeb) {
-      await CloudPushService().syncSubscription(
+      final synced = await CloudPushService().syncSubscription(
         lat: _lastLat!,
         lng: _lastLng!,
         timezone: _lastTimezone ?? DateTime.now().timeZoneName,
         city: _lastCity,
         method: _lastMethod,
-        enabledPrayers: _enabledPrayers,
+        enabledPrayers: targetSet,
       );
+      if (synced) {
+        _enabledPrayers.clear();
+        _enabledPrayers.addAll(targetSet);
+        await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
+      }
+      return;
     }
+
+    _enabledPrayers.clear();
+    _enabledPrayers.addAll(targetSet);
+    await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
+    await requestPermissions();
 
     // Native mobile notifications scheduling
     if (!kIsWeb && _lastCache != null) {
@@ -205,9 +216,7 @@ class NotificationService {
     if (city != null) _lastCity = city;
     if (method != null) _lastMethod = method;
 
-    _enabledPrayers.addAll(['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']);
-    await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
-    await requestPermissions();
+    final prayerSet = {'Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'};
 
     if (kIsWeb) {
       final synced = await CloudPushService().syncSubscription(
@@ -216,10 +225,19 @@ class NotificationService {
         timezone: _lastTimezone ?? DateTime.now().timeZoneName,
         city: _lastCity,
         method: _lastMethod,
-        enabledPrayers: _enabledPrayers,
+        enabledPrayers: prayerSet,
       );
-      return synced;
+      if (synced) {
+        _enabledPrayers.addAll(prayerSet);
+        await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
+        return true;
+      }
+      return false;
     }
+
+    _enabledPrayers.addAll(prayerSet);
+    await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
+    await requestPermissions();
 
     if (!kIsWeb && _lastCache != null) {
       await schedulePrayerNotifications(_lastCache!);

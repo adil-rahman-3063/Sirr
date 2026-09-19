@@ -118,13 +118,30 @@
       }
     };
 
-    // On-demand Service Worker registration for Background Push
+    function getSwUrl() {
+      return new URL('sw.js', document.baseURI || window.location.href).href;
+    }
+
+    // Auto-register Service Worker on page load
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register(getSwUrl(), { scope: './' })
+          .then(function(reg) {
+            console.log('[Sirr] Service Worker registered:', reg.scope);
+          })
+          .catch(function(err) {
+            console.error('[Sirr] Service Worker registration failed:', err);
+          });
+      });
+    }
+
     async function getOrRegisterSW() {
       if (!('serviceWorker' in navigator)) return null;
       try {
-        let reg = await navigator.serviceWorker.getRegistration();
+        const swUrl = getSwUrl();
+        let reg = await navigator.serviceWorker.getRegistration(swUrl);
         if (!reg) {
-          reg = await navigator.serviceWorker.register('sw.js');
+          reg = await navigator.serviceWorker.register(swUrl, { scope: './' });
         }
         await navigator.serviceWorker.ready;
         return reg;
@@ -153,17 +170,22 @@
       try {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-          console.warn("[WebPush] Notification permission denied");
+          console.warn("[WebPush] Notification permission not granted:", permission);
           return null;
         }
 
-        const registration = await getOrRegisterSW();
-        if (!registration) return null;
+        const swUrl = getSwUrl();
+        let reg = await navigator.serviceWorker.getRegistration(swUrl);
+        if (!reg) {
+          reg = await navigator.serviceWorker.register(swUrl, { scope: './' });
+        }
+        const readyReg = await navigator.serviceWorker.ready;
+        const activeReg = reg || readyReg;
 
-        let subscription = await registration.pushManager.getSubscription();
+        let subscription = await activeReg.pushManager.getSubscription();
         if (!subscription) {
           const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
-          subscription = await registration.pushManager.subscribe({
+          subscription = await activeReg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: applicationServerKey
           });

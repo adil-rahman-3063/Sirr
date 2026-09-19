@@ -17,7 +17,6 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'dart:math' as math;
 import 'package:universal_html/html.dart' as html;
 import 'package:sirr/services/web_permission.dart';
-import 'package:sirr/services/cloud_push_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -199,7 +198,7 @@ class _HomePageState extends State<HomePage> {
       final prefs = await SharedPreferences.getInstance();
       if (!force) {
         if (!kIsWeb) return;
-        final bool alreadyPrompted = prefs.getBool('push_prompt_dismissed_v5') ?? false;
+        final bool alreadyPrompted = prefs.getBool('push_prompt_dismissed_v6') ?? false;
         if (alreadyPrompted || NotificationService().enabledPrayers.isNotEmpty) {
           return;
         }
@@ -271,7 +270,7 @@ class _HomePageState extends State<HomePage> {
             actions: [
               TextButton(
                 onPressed: () {
-                  prefs.setBool('push_prompt_dismissed_v5', true);
+                  prefs.setBool('push_prompt_dismissed_v6', true);
                   Navigator.of(dialogContext).pop();
                 },
                 child: Text(
@@ -292,7 +291,6 @@ class _HomePageState extends State<HomePage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   ),
                   onPressed: () async {
-                    prefs.setBool('push_prompt_dismissed_v5', true);
                     Navigator.of(dialogContext).pop();
                     final success = await NotificationService().enableAllPrayers(
                       lat: _currentPosition?.latitude,
@@ -302,6 +300,7 @@ class _HomePageState extends State<HomePage> {
                     if (mounted) {
                       setState(() {});
                       if (success) {
+                        prefs.setBool('push_prompt_dismissed_v6', true);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
@@ -309,6 +308,16 @@ class _HomePageState extends State<HomePage> {
                               style: GoogleFonts.amiri(),
                             ),
                             duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '⚠️ Please allow notification permission in your browser prompt.',
+                              style: GoogleFonts.amiri(),
+                            ),
+                            duration: const Duration(seconds: 4),
                           ),
                         );
                       }
@@ -1073,20 +1082,7 @@ class _HomePageState extends State<HomePage> {
                 '🔔 $prayerName notification enabled! You will be alerted at prayer time.',
                 style: GoogleFonts.amiri(),
               ),
-              action: SnackBarAction(
-                label: 'Test Alert',
-                textColor: const Color(0xFFE5A93B),
-                onPressed: () async {
-                  final sent = await CloudPushService().sendTestPush();
-                  if (mounted && !sent) {
-                    NotificationService().triggerForegroundNotification(
-                      'سِرّ • صلاة $prayerName',
-                      'Test notification from Sirr Prayer Times',
-                    );
-                  }
-                },
-              ),
-              duration: const Duration(seconds: 4),
+              duration: const Duration(seconds: 3),
             ),
           );
         }

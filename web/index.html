@@ -225,7 +225,8 @@
     };
 
     window.getWebPushSubscription = async function() {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return null;
+      if (Notification.permission !== 'granted') return null;
       try {
         const registration = await getActiveSWRegistration();
         if (!registration) return null;

@@ -127,26 +127,22 @@
       window.addEventListener('load', function() {
         navigator.serviceWorker.register(getSwUrl(), { scope: './' })
           .then(function(reg) {
-            console.log('[Sirr] Service Worker registered:', reg.scope);
+            console.log('[Sirr] Service Worker registered on load:', reg.scope);
           })
           .catch(function(err) {
-            console.error('[Sirr] Service Worker registration failed:', err);
+            console.error('[Sirr] Service Worker registration failed on load:', err);
           });
       });
     }
 
-    async function getOrRegisterSW() {
+    async function getActiveSWRegistration() {
       if (!('serviceWorker' in navigator)) return null;
       try {
         const swUrl = getSwUrl();
-        let reg = await navigator.serviceWorker.getRegistration(swUrl);
-        if (!reg) {
-          reg = await navigator.serviceWorker.register(swUrl, { scope: './' });
-        }
-        await navigator.serviceWorker.ready;
-        return reg;
+        await navigator.serviceWorker.register(swUrl, { scope: './' });
+        return await navigator.serviceWorker.ready;
       } catch (err) {
-        console.error('[WebPush] ServiceWorker registration failed: ', err);
+        console.error('[WebPush] Error getting active SW registration:', err);
         return null;
       }
     }
@@ -174,28 +170,26 @@
           return null;
         }
 
-        const swUrl = getSwUrl();
-        let reg = await navigator.serviceWorker.getRegistration(swUrl);
-        if (!reg) {
-          reg = await navigator.serviceWorker.register(swUrl, { scope: './' });
+        const registration = await getActiveSWRegistration();
+        if (!registration) {
+          console.error("[WebPush] No active service worker registration available");
+          return null;
         }
-        const readyReg = await navigator.serviceWorker.ready;
-        const activeReg = reg || readyReg;
 
-        let subscription = await activeReg.pushManager.getSubscription();
+        let subscription = await registration.pushManager.getSubscription();
         if (!subscription) {
           const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
-          subscription = await activeReg.pushManager.subscribe({
+          subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: applicationServerKey
           });
         }
 
         const json = subscription.toJSON();
-        console.log("[WebPush] Push subscription ready:", json);
+        console.log("[WebPush] Push subscription successfully acquired:", json);
         return JSON.stringify(json);
       } catch (e) {
-        console.error("[WebPush] Error subscribing to Web Push:", e);
+        console.error("[WebPush] Error during subscribeWebPush:", e);
         return null;
       }
     };
@@ -203,7 +197,7 @@
     window.getWebPushSubscription = async function() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
       try {
-        const registration = await getOrRegisterSW();
+        const registration = await getActiveSWRegistration();
         if (!registration) return null;
         const subscription = await registration.pushManager.getSubscription();
         if (!subscription) return null;
@@ -217,7 +211,7 @@
     window.unsubscribeWebPush = async function() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return true;
       try {
-        const registration = await getOrRegisterSW();
+        const registration = await getActiveSWRegistration();
         if (!registration) return true;
         const subscription = await registration.pushManager.getSubscription();
         if (subscription) {

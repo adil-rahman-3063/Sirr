@@ -1,66 +1,126 @@
-# Sirr: Your Personal Prayer Companion
+# سِرّ • Sirr: Islamic Prayer Companion
 
-Sirr is a modern, cross-platform prayer tracking and Islamic calendar application built with Flutter. Designed with a sleek glassmorphism UI, it helps Muslims manage their daily prayers, track their spiritual journey, and stay updated with important Hijri dates.
+<p align="center">
+  <h2 align="center">سِرّ • Sirr</h2>
+  <p align="center">
+    <strong>A modern, privacy-first Islamic prayer companion with dynamic glassmorphism and serverless push notifications.</strong>
+  </p>
+  <p align="center">
+    <img src="https://img.shields.io/badge/version-3.0.0-blue.svg?style=flat-square" alt="Version 3.0.0" />
+    <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter" />
+    <img src="https://img.shields.io/badge/Cloudflare_Workers-Serverless-F38020?style=flat-square&logo=cloudflare&logoColor=white" alt="Cloudflare Workers" />
+    <img src="https://img.shields.io/badge/Cloudflare_D1-SQL_Database-F38020?style=flat-square&logo=sqlite&logoColor=white" alt="Cloudflare D1" />
+    <img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License: MIT" />
+  </p>
+</p>
+
+---
 
 ## ✨ Features
 
-- **Accurate Prayer Times**: Automatically calculates prayer times based on your current location (GPS) or defaults to Mecca. Shows countdown to next prayer.
-- **Hijri Calendar & Events**: Stay informed about the current Hijri date and upcoming Islamic events (Ramadan, Eid, etc.) with a built-in countdown.
-- **Prayer Tracking**: Easily mark prayers as completed with a simple swipe gesture. Visual feedback includes time of completion and daily progress rings.
-- **Activity Heatmap**: Visualize your prayer consistency over time with a GitHub-style contribution heatmap.
-- **Glassmorphism Design**: Experience a beautiful, modern interface with semi-transparent elements and dynamic backgrounds.
-- **Cross-Platform**: Seamlessly runs on Android, Windows, and Web.
+- 🕋 **Accurate Astronomical Prayer Times**: Computes daily prayer timings (Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha) tailored to exact GPS coordinates via Aladhan API with countdown timer to the next prayer.
+- 🔔 **100% Anonymous Web Push System**:
+  - Cloudflare-native Web Push architecture (RFC 8291/8292) without Firebase or Google Play Services dependencies.
+  - 1-minute serverless cron dispatcher running on Cloudflare Workers & Cloudflare D1 SQL.
+  - Zero personal data or emails required—completely private and encrypted end-to-end.
+- 🎨 **Dynamic Time-of-Day Glassmorphism Engine**:
+  - Automatically shifts through 5 tailored prayer period color palettes (Fajr, Morning/Dhuhr, Asr, Maghrib, Isha).
+  - Instant time-of-day detection on app launch eliminates theme flashing during loading.
+  - Adaptive frosted glass cards, soft glow highlights, and period-matched Shimmer skeleton screens.
+- 🪄 **Glassmorphic Floating SnackBars**:
+  - Frosted blur (`BackdropFilter`) with pill capsule rounded edges (`BorderRadius.circular(24)`).
+  - Dynamic glowing status badges and responsive centering matching the active prayer theme.
+- 🕌 **Calligraphic Splash Screen**:
+  - Frosted illuminated emblem showcasing **"سِرّ"** in authentic Arabic calligraphy (*Aref Ruqaa*).
+  - Sleek capsule `LinearProgressIndicator` loading bar and smooth fade-in transitions.
+- 🧭 **Interactive Qibla Compass**:
+  - Real-time magnetic heading calculation, smooth compass rotation, Kaaba alignment indicators, and one-tap calibration.
+- 📅 **Hijri Calendar & Habit Heatmap**:
+  - Real-time Hijri date conversion, upcoming Islamic event countdowns (Ramadan, Eid, etc.).
+  - Daily prayer habit tracking with swipe-to-complete actions and a GitHub-style consistency heatmap.
 
-## 🛠️ Tech Stack
+---
 
-- **Framework**: [Flutter](https://flutter.dev) (Dart)
-- **State Management**: [Provider](https://pub.dev/packages/provider) (Used implicitly or planned) / `setState` based for now.
-- **Database**: [SQFlite](https://pub.dev/packages/sqflite) (Local data persistence)
-- **Geolocation**: [Geolocator](https://pub.dev/packages/geolocator) & [Geocoding](https://pub.dev/packages/geocoding)
-- **Visualization**: [Flutter Heatmap Calendar](https://pub.dev/packages/flutter_heatmap_calendar)
-- **UI Components**: Custom Glass Containers, Material 3 Theming.
+## 🛠️ Architecture & Tech Stack
+
+### Client (Flutter Web & Mobile)
+- **Framework**: [Flutter](https://flutter.dev) (Dart SDK `^3.9.2`)
+- **State & Theming**: [Provider](https://pub.dev/packages/provider) + Dynamic `ThemeProvider` with 5 prayer periods
+- **Typography**: [Google Fonts](https://pub.dev/packages/google_fonts) (*Amiri*, *Aref Ruqaa*, *Outfit*)
+- **Storage**: [SharedPreferences](https://pub.dev/packages/shared_preferences) & [sqflite](https://pub.dev/packages/sqflite) / [sqflite_common_ffi_web](https://pub.dev/packages/sqflite_common_ffi_web)
+- **Sensor & Geo**: [Geolocator](https://pub.dev/packages/geolocator), [Geocoding](https://pub.dev/packages/geocoding), [Flutter Compass](https://pub.dev/packages/flutter_compass)
+- **Native Notifications**: [flutter_local_notifications](https://pub.dev/packages/flutter_local_notifications) (Android/iOS offline alerts)
+
+### Backend (Cloudflare Serverless)
+- **Compute**: [Cloudflare Workers](https://workers.cloudflare.com/) (TypeScript / Edge runtime)
+- **Database**: [Cloudflare D1](https://developers.cloudflare.com/d1/) (Serverless distributed SQLite database)
+- **Trigger**: 1-minute Cron Trigger (`* * * * *`) for automated prayer time matching & dispatch
+- **Web Push Protocol**: RFC 8291 / RFC 8292 VAPID encryption with AES-128-GCM payload encryption
+
+---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (3.27+ recommended)
+- [Node.js](https://nodejs.org/) & [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) (for backend deployment)
 
-- Flutter SDK (Latest Stable)
-- Dart SDK
-- Android Studio / VS Code with Flutter extensions
+### 1. Clone the Repository
+```bash
+git clone https://github.com/adil-rahman-3063/Sirr.git
+cd Sirr
+```
 
-### Installation
+### 2. Install Dependencies
+```bash
+flutter pub get
+```
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/adil-rahman-3063/Sirr.git
-    cd sirr
-    ```
+### 3. Run Locally
+```bash
+# Run on Web (Chrome)
+flutter run -d chrome
 
-2.  **Install dependencies:**
-    ```bash
-    flutter pub get
-    ```
+# Run on Android Device / Emulator
+flutter run -d android
 
-3.  **Run the app:**
-    ```bash
-    # For Android
-    flutter run
+# Run on Windows Desktop
+flutter run -d windows
+```
 
-    # For Web
-    flutter run -d chrome
+### 4. Cloudflare Worker Deployment (Optional)
+```bash
+cd cloudflare_worker
+npm install
+npx wrangler d1 execute sirr-push-db --remote --file=./schema.sql
+npx wrangler deploy
+```
 
-    # For Windows
-    flutter run -d windows
-    ```
+---
 
-## 📸 Screenshots
+## 📋 Release Notes
 
-*(To be added)*
+### What's New in v3.0.0 🎉
+
+#### 🔔 Anonymous Cloudflare Web Push Engine
+- **No Firebase Needed**: 100% serverless, zero-dependency Web Push notification pipeline running on Cloudflare Workers and Cloudflare D1.
+- **Automated Cron Delivery**: Minute-accurate prayer dispatch with automatic daily Aladhan cache management and timezone sanitization.
+- **Privacy-First**: Anonymous device push subscriptions without user accounts or tracking.
+
+#### 🎨 Dynamic Glassmorphism & UI Refresh
+- **Calligraphic Splash Screen**: Illuminated emblem featuring **"سِرّ"** calligraphy (*Aref Ruqaa*) with a sleek capsule loading bar.
+- **Glassmorphic Floating SnackBars**: Custom frosted pill SnackBars with rounded edges, dynamic accent glow, and status badges.
+- **Zero-Flash Dynamic Theme Loading**: Time-of-day dynamic initialization renders skeleton loading instantly in the appropriate theme (Fajr, Morning, Asr, Maghrib, Isha).
+- **Sanitized Console Logging**: Cleared all verbose raw endpoints and payload logging from client consoles.
+
+---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/adil-rahman-3063/Sirr/issues).
+
+---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is open-source and licensed under the [MIT License](LICENSE).

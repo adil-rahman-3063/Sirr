@@ -348,7 +348,7 @@ export default {
     const vapid: VapidKeys = {
       publicKey: env.VAPID_PUBLIC_KEY,
       privateKey: env.VAPID_PRIVATE_KEY,
-      subject: env.VAPID_SUBJECT || 'mailto:admin@sirr.pages.dev',
+      subject: env.VAPID_SUBJECT || 'mailto:adilrahman3063@gmail.com',
     };
 
     // 0. Debug endpoint to inspect all D1 tables in browser
@@ -488,15 +488,22 @@ export default {
           timezone = 'UTC',
           city = '',
           method = 3,
-          fajr = 1,
-          dhuhr = 1,
-          asr = 1,
-          maghrib = 1,
-          isha = 1,
         } = body;
 
         if (!endpoint || !keys || !keys.p256dh || !keys.auth || lat === undefined || lng === undefined) {
           return jsonResponse({ error: 'Missing required subscription fields' }, 400);
+        }
+
+        const fajrVal = (body.fajr === 1 || body.fajr === true || body.fajr === '1') ? 1 : 0;
+        const dhuhrVal = (body.dhuhr === 1 || body.dhuhr === true || body.dhuhr === '1') ? 1 : 0;
+        const asrVal = (body.asr === 1 || body.asr === true || body.asr === '1') ? 1 : 0;
+        const maghribVal = (body.maghrib === 1 || body.maghrib === true || body.maghrib === '1') ? 1 : 0;
+        const ishaVal = (body.isha === 1 || body.isha === true || body.isha === '1') ? 1 : 0;
+
+        // If user turned off all individual prayers, remove subscription from database
+        if (fajrVal === 0 && dhuhrVal === 0 && asrVal === 0 && maghribVal === 0 && ishaVal === 0) {
+          await env.DB.prepare('DELETE FROM subscriptions WHERE endpoint = ?').bind(endpoint).run();
+          return jsonResponse({ ok: true, message: 'All prayer notifications turned off; unsubscribed from database' });
         }
 
         const latNum = Number(lat);
@@ -507,7 +514,7 @@ export default {
         const now = Date.now();
         const id = crypto.randomUUID();
 
-        // Upsert subscription
+        // Upsert subscription with updated individual prayer toggles
         await env.DB.prepare(`
           INSERT INTO subscriptions (
             id, endpoint, p256dh, auth, lat, lng, location_key, timezone, city, method,
@@ -527,6 +534,7 @@ export default {
             asr = excluded.asr,
             maghrib = excluded.maghrib,
             isha = excluded.isha,
+            last_prayer = CASE WHEN subscriptions.location_key != excluded.location_key THEN NULL ELSE subscriptions.last_prayer END,
             updated_at = excluded.updated_at
         `).bind(
           id,
@@ -539,28 +547,30 @@ export default {
           safeTimezone,
           city,
           methodNum,
-          fajr ? 1 : 0,
-          dhuhr ? 1 : 0,
-          asr ? 1 : 0,
-          maghrib ? 1 : 0,
-          isha ? 1 : 0,
+          fajrVal,
+          dhuhrVal,
+          asrVal,
+          maghribVal,
+          ishaVal,
           now,
           now
         ).run();
 
-        // Ensure ONLY today's prayer times are fetched and stored
+        // If this country's prayer times do not exist yet in daily_prayer_times, getOrFetchDailyPrayerTimes creates a new entry.
+        // If it already exists, it uses the existing entry.
         const today = new Date();
         const { dateStr } = getDateInTimezone(today, safeTimezone, latNum, lngNum);
-        await getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, today, safeTimezone);
+        const prayerTimes = await getOrFetchDailyPrayerTimes(env, locationKey, latNum, lngNum, methodNum, today, safeTimezone);
+        console.log(`[Location Sync] Stored/verified prayer times for country location ${locationKey} (${city || safeTimezone}):`, JSON.stringify(prayerTimes));
 
-        // Remove any old/extra date rows for this location
-        ctx.waitUntil(
-          env.DB.prepare('DELETE FROM daily_prayer_times WHERE location_key = ? AND date_str != ?')
-            .bind(locationKey, dateStr)
-            .run()
-        );
-
-        return jsonResponse({ ok: true, message: 'Push subscription updated successfully', locationKey });
+        return jsonResponse({
+          ok: true,
+          message: 'Push subscription and country prayer times updated successfully',
+          locationKey,
+          timezone: safeTimezone,
+          city,
+          prayerTimes,
+        });
       } catch (err: unknown) {
         return jsonResponse({ error: String(err) }, 500);
       }
@@ -591,9 +601,9 @@ export default {
           return jsonResponse({ isSubscribed: false }, 200);
         }
 
-        const sub = await env.DB.prepare('SELECT fajr, dhuhr, asr, maghrib, isha FROM subscriptions WHERE endpoint = ?')
+        const sub = await env.DB.prepare('SELECT fajr, dhuhr, asr, maghrib, isha, location_key, lat, lng, timezone, city FROM subscriptions WHERE endpoint = ?')
           .bind(endpoint)
-          .first<{ fajr: number; dhuhr: number; asr: number; maghrib: number; isha: number }>();
+          .first<{ fajr: number; dhuhr: number; asr: number; maghrib: number; isha: number; location_key: string; lat: number; lng: number; timezone: string; city: string }>();
 
         if (sub) {
           const enabledPrayers: string[] = [];
@@ -606,6 +616,11 @@ export default {
           return jsonResponse({
             isSubscribed: true,
             enabledPrayers,
+            locationKey: sub.location_key,
+            lat: sub.lat,
+            lng: sub.lng,
+            timezone: sub.timezone,
+            city: sub.city,
           });
         }
 
@@ -682,7 +697,7 @@ export default {
     const vapid: VapidKeys = {
       publicKey: env.VAPID_PUBLIC_KEY,
       privateKey: env.VAPID_PRIVATE_KEY,
-      subject: env.VAPID_SUBJECT || 'mailto:admin@sirr.pages.dev',
+      subject: env.VAPID_SUBJECT || 'mailto:adilrahman3063@gmail.com',
     };
 
     const now = new Date();

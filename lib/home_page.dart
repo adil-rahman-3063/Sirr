@@ -29,7 +29,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final Map<String, PrayerTimings> _cache = {};
   bool _isLoading = true;
   String _errorMessage = '';
@@ -46,6 +46,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _referenceDate = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
     _pageController = PageController(initialPage: _initialPage);
     _fetchInitialLocationAndData();
@@ -96,7 +97,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('[HomePage] App resumed: Checking for location/country update...');
+      _fetchInitialLocationAndData(forceRefresh: true);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer.cancel();
     _pageController.dispose();
     super.dispose();
@@ -451,7 +461,7 @@ class _HomePageState extends State<HomePage> {
     return _referenceDate.add(Duration(days: diff));
   }
 
-  Future<void> _fetchInitialLocationAndData() async {
+  Future<void> _fetchInitialLocationAndData({bool forceRefresh = false}) async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -476,7 +486,12 @@ class _HomePageState extends State<HomePage> {
          return;
       }
 
-      _currentPosition = await Geolocator.getCurrentPosition();
+      final newPosition = await Geolocator.getCurrentPosition();
+      final bool locationMoved = _currentPosition == null ||
+          (_currentPosition!.latitude - newPosition.latitude).abs() > 0.01 ||
+          (_currentPosition!.longitude - newPosition.longitude).abs() > 0.01;
+
+      _currentPosition = newPosition;
       
       String? cityName;
       String? countryName;
@@ -515,6 +530,12 @@ class _HomePageState extends State<HomePage> {
         _locationName = "$cityName${countryName != null ? ', $countryName' : ''}";
       } else {
         _locationName = "Current Location";
+      }
+
+      // If user moved to a different location or country, clear cached timings so fresh timings are retrieved
+      if (locationMoved || forceRefresh) {
+        debugPrint('[HomePage] Location changed to $_locationName. Refreshing prayer timings cache...');
+        _cache.clear();
       }
 
       if (_currentPosition != null) {

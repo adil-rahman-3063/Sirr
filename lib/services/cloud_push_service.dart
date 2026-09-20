@@ -5,6 +5,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/push_config.dart';
 import 'web_permission.dart';
 
+class SubscriptionInfo {
+  final bool isSubscribed;
+  final List<String> enabledPrayers;
+  final String? locationKey;
+  final double? lat;
+  final double? lng;
+  final String? timezone;
+  final String? city;
+
+  SubscriptionInfo({
+    required this.isSubscribed,
+    required this.enabledPrayers,
+    this.locationKey,
+    this.lat,
+    this.lng,
+    this.timezone,
+    this.city,
+  });
+}
+
 class CloudPushService {
   static final CloudPushService _instance = CloudPushService._internal();
   factory CloudPushService() => _instance;
@@ -120,7 +140,7 @@ class CloudPushService {
   }
 
   /// Check if this browser device has an active subscription in Cloudflare D1
-  Future<List<String>?> checkActiveSubscription() async {
+  Future<SubscriptionInfo?> checkActiveSubscription() async {
     if (!kIsWeb) return null;
     try {
       final rawSub = await getWebPushSubscription();
@@ -138,8 +158,19 @@ class CloudPushService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['isSubscribed'] == true && data['enabledPrayers'] != null) {
-          return List<String>.from(data['enabledPrayers']);
+        if (data['isSubscribed'] == true) {
+          final enabled = (data['enabledPrayers'] is List)
+              ? List<String>.from(data['enabledPrayers'])
+              : <String>[];
+          return SubscriptionInfo(
+            isSubscribed: true,
+            enabledPrayers: enabled,
+            locationKey: data['locationKey'] as String?,
+            lat: (data['lat'] is num) ? (data['lat'] as num).toDouble() : null,
+            lng: (data['lng'] is num) ? (data['lng'] as num).toDouble() : null,
+            timezone: data['timezone'] as String?,
+            city: data['city'] as String?,
+          );
         }
       }
     } catch (e) {

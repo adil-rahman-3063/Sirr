@@ -1,5 +1,4 @@
 name = "sirr-notifications"
-account_id = "caadeace0f03e31ffd15454ba3e759aa"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
@@ -14,7 +13,7 @@ database_id = "2a724d2c-41d0-45a3-968f-5e683be3896a"
 
 [vars]
 VAPID_PUBLIC_KEY = "BJBckAgVOJ0kC2ri3PdbHqhzRfc2DFMBoqJRG_oEji7RYElJaU5r4y7TK2d64_SHTTBmXVMftw3w-xIMsSGYgTM"
-VAPID_SUBJECT = "mailto:admin@sirr.pages.dev"
+VAPID_SUBJECT = "mailto:adilrahman3063@gmail.com"
 
 [observability.logs]
 enabled = true

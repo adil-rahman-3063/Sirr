@@ -124,17 +124,43 @@ class NotificationService {
   }
 
   /// Sync with remote Cloudflare D1 on app startup:
-  /// - If device IS in D1: restore enabled prayers, dismiss prompt, never show prompt!
+  /// - If device IS in D1: restore enabled prayers and check if location/country changed to auto-sync!
   /// - If device is NOT in D1: reset local enabled prayers & dismissed flag so user starts fresh.
   Future<bool> syncOrResetSubscriptionOnStartup() async {
     if (!kIsWeb) return false;
     try {
-      final remotePrayers = await CloudPushService().checkActiveSubscription();
-      if (remotePrayers != null && remotePrayers.isNotEmpty) {
+      final subInfo = await CloudPushService().checkActiveSubscription();
+      if (subInfo != null && subInfo.isSubscribed && subInfo.enabledPrayers.isNotEmpty) {
         _enabledPrayers.clear();
-        _enabledPrayers.addAll(remotePrayers);
+        _enabledPrayers.addAll(subInfo.enabledPrayers);
         await _prefs.setStringList('enabledPrayers', _enabledPrayers.toList());
         await _prefs.setBool('push_prompt_dismissed_v7', true);
+
+        // Check if device's current location/country differs from database's stored location
+        final activeLat = _lastLat;
+        final activeLng = _lastLng;
+        final activeTz = _lastTimezone ?? getDeviceIanaTimezone();
+        final activeCity = _lastCity;
+
+        if (activeLat != null && activeLng != null) {
+          final bool locationChanged = subInfo.lat == null ||
+              subInfo.lng == null ||
+              (subInfo.lat! - activeLat).abs() > 0.05 ||
+              (subInfo.lng! - activeLng).abs() > 0.05 ||
+              (subInfo.timezone != null && subInfo.timezone != activeTz);
+
+          if (locationChanged) {
+            debugPrint('[NotificationService] Detected country/location change from (${subInfo.city ?? subInfo.timezone}) to ($activeCity, $activeTz). Auto-syncing with Cloudflare D1...');
+            await CloudPushService().syncSubscription(
+              lat: activeLat,
+              lng: activeLng,
+              timezone: activeTz,
+              city: activeCity,
+              method: _lastMethod,
+              enabledPrayers: _enabledPrayers,
+            );
+          }
+        }
         return true;
       } else {
         // Device is not in D1 - reset local state so user starts completely fresh!
@@ -162,6 +188,11 @@ class NotificationService {
     String? city,
     int method = 3,
   }) {
+    final bool locationChanged = _lastLat == null ||
+        _lastLng == null ||
+        (_lastLat! - lat).abs() > 0.01 ||
+        (_lastLng! - lng).abs() > 0.01;
+
     _lastLat = lat;
     _lastLng = lng;
     _lastTimezone = timezone ?? getDeviceIanaTimezone();
@@ -174,8 +205,9 @@ class NotificationService {
     if (city != null) _prefs.setString('last_known_city', city);
     if (_lastTimezone != null) _prefs.setString('last_known_timezone', _lastTimezone!);
 
-    // If web and user already has notifications enabled, sync location updates to Cloudflare Worker
-    if (kIsWeb && _enabledPrayers.isNotEmpty) {
+    // If web and user has notifications enabled, sync location updates to Cloudflare Worker
+    if (kIsWeb && _enabledPrayers.isNotEmpty && locationChanged) {
+      debugPrint('[NotificationService] Location updated to $city ($lat, $lng). Syncing with Cloudflare Worker...');
       CloudPushService().syncSubscription(
         lat: lat,
         lng: lng,

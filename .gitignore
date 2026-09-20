@@ -48,6 +48,8 @@ app.*.map.json
 /android/app/release
 /android/local.properties
 /android/key.properties
+*.keystore
+*.jks
 
 # iOS
 /ios/Flutter/App.framework
@@ -67,6 +69,9 @@ macos/Flutter/ephemeral/
 
 # Secrets & Node
 .env
+.dev.vars
+*.pem
+*.key
 node_modules/
 .wrangler/
 

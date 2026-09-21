@@ -21,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:sirr/widgets/glass_snack_bar.dart';
 import 'package:sirr/config/app_info.dart';
+import 'package:sirr/services/analytics_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -51,6 +52,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _pageController = PageController(initialPage: _initialPage);
     _fetchInitialLocationAndData();
     _checkAndShowInstallPrompt();
+    AnalyticsService().init().then((_) {
+      AnalyticsService().logAppOpen();
+    });
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         final newNow = DateTime.now();
@@ -112,33 +116,55 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  void _checkAndShowInstallPrompt() {
+  void _checkAndShowInstallPrompt() async {
     if (!kIsWeb) return;
     
-    // Use Future.delayed to ensure context is fully built and mounted before showing dialog
-    Future.delayed(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      
-      try {
-        final bool isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;
-        if (isStandalone) return; // Already installed as PWA
-
-        final userAgent = html.window.navigator.userAgent.toLowerCase();
-        final isIOS = userAgent.contains('iphone') || userAgent.contains('ipad') || userAgent.contains('ipod');
-        final isAndroid = userAgent.contains('android');
-
-        if (isIOS || isAndroid) {
-          _showInstallDialog(isIOS);
-        }
-      } catch (e) {
-        debugPrint("Error checking standalone mode: $e");
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('install_prompt_dismissed_permanent') ?? false) {
+        return;
       }
-    });
+
+      Future.delayed(const Duration(seconds: 3), () async {
+        if (!mounted) return;
+        
+        try {
+          final bool isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;
+          if (isStandalone) {
+            await prefs.setBool('install_prompt_dismissed_permanent', true);
+            return;
+          }
+
+          final userAgent = html.window.navigator.userAgent.toLowerCase();
+          final isIOS = userAgent.contains('iphone') || userAgent.contains('ipad') || userAgent.contains('ipod');
+          final isAndroid = userAgent.contains('android');
+
+          if (isIOS || isAndroid) {
+            await prefs.setBool('install_prompt_dismissed_permanent', true);
+            if (mounted) {
+              _showInstallDialog(isIOS);
+            }
+          }
+        } catch (e) {
+          debugPrint("Error checking standalone mode: $e");
+        }
+      });
+    } catch (e) {
+      debugPrint("Error checking install prompt: $e");
+    }
   }
 
-  void _showInstallDialog(bool isIOS) {
+  void _showInstallDialog(bool isIOS) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('install_prompt_dismissed_permanent', true);
+    } catch (_) {}
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) {
         return AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
@@ -211,24 +237,34 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (!force) {
         if (!kIsWeb) return;
 
+        // Check if user has ever dismissed or responded to the prompt
+        final bool alreadyDismissed = prefs.getBool('push_prompt_dismissed_permanent') ?? false;
+        if (alreadyDismissed) {
+          return;
+        }
+
         // Check if device is already registered in Cloudflare D1 table
         final isAlreadySubscribed = await NotificationService().syncOrResetSubscriptionOnStartup();
         if (isAlreadySubscribed) {
-          // Device is already in the database: restore state and DO NOT show prompt
+          await prefs.setBool('push_prompt_dismissed_permanent', true);
           if (mounted) setState(() {});
           return;
         }
 
-        // If not in database, user starts fresh
-        final bool alreadyPrompted = prefs.getBool('push_prompt_dismissed_v7') ?? false;
-        if (alreadyPrompted || NotificationService().enabledPrayers.isNotEmpty) {
+        if (NotificationService().enabledPrayers.isNotEmpty) {
+          await prefs.setBool('push_prompt_dismissed_permanent', true);
           return;
         }
+
         await Future.delayed(const Duration(milliseconds: 1500));
         if (!mounted) return;
         if (NotificationService().enabledPrayers.isNotEmpty) return;
       }
 
+      if (!mounted) return;
+
+      // Mark as permanently dismissed so it never appears again automatically (even on barrier click)
+      await prefs.setBool('push_prompt_dismissed_permanent', true);
       if (!mounted) return;
 
       showDialog(
@@ -293,7 +329,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             actions: [
               TextButton(
                 onPressed: () {
-                  prefs.setBool('push_prompt_dismissed_v7', true);
+                  prefs.setBool('push_prompt_dismissed_permanent', true);
                   Navigator.of(dialogContext).pop();
                 },
                 child: Text(
@@ -337,7 +373,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     if (mounted) {
                       setState(() {});
                       if (success) {
-                        prefs.setBool('push_prompt_dismissed_v7', true);
+                        prefs.setBool('push_prompt_dismissed_permanent', true);
                         AppSnackBar.showSuccess(
                           context,
                           'All 5 prayer notifications enabled successfully!',
@@ -653,38 +689,103 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget _buildDateHeader(int index, PrayerTimings timings, DateTime date) {
     final hijriFormatted = "${timings.hijriDate.day} ${timings.hijriDate.monthName}, ${timings.hijriDate.year}";
     final gregorianFormatted = DateFormat('EEE, d MMMM yyyy').format(date);
+    final isToday = index == _initialPage;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            icon: Icon(Icons.chevron_left, color: Theme.of(context).colorScheme.primary, size: 18),
-            onPressed: () {
-              _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-            },
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                hijriFormatted,
-                style: GoogleFonts.amiri(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
+              IconButton(
+                icon: Icon(Icons.chevron_left, color: Theme.of(context).colorScheme.primary, size: 20),
+                tooltip: 'Previous day',
+                onPressed: () {
+                  _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                },
               ),
-              const SizedBox(height: 2),
-              Text(
-                gregorianFormatted,
-                style: GoogleFonts.amiri(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      hijriFormatted,
+                      style: GoogleFonts.amiri(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      gregorianFormatted,
+                      style: GoogleFonts.amiri(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.primary, size: 20),
+                tooltip: 'Next day',
+                onPressed: () {
+                  _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                },
               ),
             ],
           ),
-          IconButton(
-            icon: Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.primary, size: 18),
-            onPressed: () {
-              _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-            },
-          ),
+          if (!isToday) ...[
+            const SizedBox(height: 6),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  AnalyticsService().logBackToToday();
+                  _pageController.animateToPage(
+                    _initialPage,
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeInOutCubic,
+                  );
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.35),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.today_rounded,
+                        size: 13,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Back to Today',
+                        style: GoogleFonts.amiri(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          height: 1.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1115,6 +1216,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Future<void> _handleNotificationToggle(String prayerName) async {
     final willEnable = !NotificationService().isNotificationEnabled(prayerName);
+    AnalyticsService().logNotificationToggled(prayerName, willEnable);
 
     if (willEnable && kIsWeb) {
       final permState = await getWebNotificationPermissionState();
@@ -1651,6 +1753,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _loadDataForDate(date);
         _loadDataForDate(date.add(const Duration(days: 1)));
         _loadDataForDate(date.subtract(const Duration(days: 1)));
+        final dateString = DateFormat('yyyy-MM-dd').format(date);
+        AnalyticsService().logDateChanged(dateString, index - _initialPage);
       },
       itemBuilder: (context, index) {
         final targetDate = _getDateForIndex(index);
@@ -1740,6 +1844,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         backgroundColor: Theme.of(context).colorScheme.primary,
         child: const Icon(Icons.explore, color: Colors.white),
         onPressed: () async {
+          AnalyticsService().logQiblaOpened();
           if (kIsWeb) {
             await requestWebOrientationPermission();
           }

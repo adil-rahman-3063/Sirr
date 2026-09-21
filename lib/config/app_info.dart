@@ -6,7 +6,6 @@ class AppInfo {
   static const String authorEmail = 'adilrahman3063@gmail.com';
   static const String authorUrl = 'https://adilrahman.cc';
   
-  /// Google Analytics 4 Measurement ID (e.g., 'G-XXXXXXXXXX')
-  /// Replace with your actual GA4 Measurement ID from Google Analytics console.
-  static const String googleAnalyticsMeasurementId = 'G-XXXXXXXXXX';
+  /// Google Analytics 4 Measurement ID
+  static const String googleAnalyticsMeasurementId = 'G-DE03SZG4FY';
 }

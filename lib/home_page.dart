@@ -1336,9 +1336,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             InkWell(
               borderRadius: BorderRadius.circular(10),
               onTap: () async {
-                final Uri url = Uri.parse(AppInfo.authorUrl);
-                if (await canLaunchUrl(url)) {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                try {
+                  final Uri url = Uri.parse(AppInfo.authorUrl);
+                  final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+                  if (!launched) {
+                    await launchUrl(url, mode: LaunchMode.platformDefault);
+                  }
+                } catch (e) {
+                  debugPrint('Could not launch author URL: $e');
                 }
               },
               child: Padding(

@@ -1,7 +1,7 @@
 class AppInfo {
   static const String name = 'سِرّ';
-  static const String version = '3.2.1';
-  static const int buildNumber = 3;
+  static const String version = '4.0.0';
+  static const int buildNumber = 4;
   static const String author = 'AR Creations';
   static const String authorEmail = 'adilrahman3063@gmail.com';
   static const String authorUrl = 'https://adilrahman.cc';

@@ -1882,20 +1882,60 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   bool get _isCompassSupportedDevice {
-    if (kIsWeb) {
-      try {
-        final userAgent = html.window.navigator.userAgent.toLowerCase();
-        return userAgent.contains('iphone') ||
-            userAgent.contains('ipad') ||
-            userAgent.contains('ipod') ||
-            userAgent.contains('android') ||
-            userAgent.contains('mobile');
-      } catch (_) {
+    // Native mobile apps
+    if (!kIsWeb) {
+      return defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS;
+    }
+
+    // On Web: Check if running on mobile OS / browser
+    try {
+      // 1. Flutter's built-in platform detection for web (Android / iOS)
+      if (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS) {
+        return true;
+      }
+
+      final nav = html.window.navigator;
+      final userAgent = nav.userAgent.toLowerCase();
+      final platform = (nav.platform ?? '').toLowerCase();
+      final maxTouchPoints = nav.maxTouchPoints ?? 0;
+
+      // 2. Explicit Mobile / Tablet User Agent strings
+      final isMobileUA = userAgent.contains('android') ||
+          userAgent.contains('iphone') ||
+          userAgent.contains('ipad') ||
+          userAgent.contains('ipod') ||
+          userAgent.contains('mobile') ||
+          userAgent.contains('silk') ||
+          userAgent.contains('kindle') ||
+          userAgent.contains('blackberry') ||
+          userAgent.contains('opera mini') ||
+          userAgent.contains('samsungbrowser');
+
+      if (isMobileUA) return true;
+
+      // 3. iPad on iOS 13+ Safari (reports Macintosh in UA but has multi-touch)
+      if ((platform.contains('mac') || userAgent.contains('macintosh')) && maxTouchPoints > 1) {
+        return true;
+      }
+
+      // 4. Windows, Linux desktop, or macOS desktop without touch are desktops/laptops
+      final isDesktopPlatform = defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux ||
+          (defaultTargetPlatform == TargetPlatform.macOS && maxTouchPoints <= 1);
+
+      if (isDesktopPlatform) {
         return false;
       }
+
+      // 5. Fallback: Any device with touch points is a mobile/tablet
+      return maxTouchPoints > 0;
+    } catch (e) {
+      debugPrint('Error detecting device for compass: $e');
+      return defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS;
     }
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
   }
 
   void _showCompassModal() {

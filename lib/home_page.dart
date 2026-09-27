@@ -1844,7 +1844,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       floatingActionButton: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Quran Button (on the left of Qibla compass)
+          // Quran Button
           FloatingActionButton(
             heroTag: 'quran_button',
             backgroundColor: const Color(0xFFE5A93B),
@@ -1859,24 +1859,43 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               );
             },
           ),
-          const SizedBox(width: 14),
-          // Qibla Compass Button
-          FloatingActionButton(
-            heroTag: 'qibla_compass_button',
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            tooltip: 'Qibla Compass',
-            child: const Icon(Icons.explore, color: Colors.white, size: 24),
-            onPressed: () async {
-              AnalyticsService().logQiblaOpened();
-              if (kIsWeb) {
-                await requestWebOrientationPermission();
-              }
-              _showCompassModal();
-            },
-          ),
+          if (_isCompassSupportedDevice) ...[
+            const SizedBox(width: 14),
+            // Qibla Compass Button (Shown only on mobile/tablet devices)
+            FloatingActionButton(
+              heroTag: 'qibla_compass_button',
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              tooltip: 'Qibla Compass',
+              child: const Icon(Icons.explore, color: Colors.white, size: 24),
+              onPressed: () async {
+                AnalyticsService().logQiblaOpened();
+                if (kIsWeb) {
+                  await requestWebOrientationPermission();
+                }
+                _showCompassModal();
+              },
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  bool get _isCompassSupportedDevice {
+    if (kIsWeb) {
+      try {
+        final userAgent = html.window.navigator.userAgent.toLowerCase();
+        return userAgent.contains('iphone') ||
+            userAgent.contains('ipad') ||
+            userAgent.contains('ipod') ||
+            userAgent.contains('android') ||
+            userAgent.contains('mobile');
+      } catch (_) {
+        return false;
+      }
+    }
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
   }
 
   void _showCompassModal() {

@@ -22,6 +22,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:sirr/widgets/glass_snack_bar.dart';
 import 'package:sirr/config/app_info.dart';
 import 'package:sirr/services/analytics_service.dart';
+import 'package:sirr/screens/quran/quran_index_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -1840,16 +1841,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        child: const Icon(Icons.explore, color: Colors.white),
-        onPressed: () async {
-          AnalyticsService().logQiblaOpened();
-          if (kIsWeb) {
-            await requestWebOrientationPermission();
-          }
-          _showCompassModal();
-        },
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Quran Button (on the left of Qibla compass)
+          FloatingActionButton(
+            heroTag: 'quran_button',
+            backgroundColor: const Color(0xFFE5A93B),
+            tooltip: 'القرآن الكريم • Holy Quran',
+            child: const Icon(Icons.menu_book_rounded, color: Colors.black87, size: 24),
+            onPressed: () {
+              AnalyticsService().logEvent('quran_opened');
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const QuranIndexPage(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 14),
+          // Qibla Compass Button
+          FloatingActionButton(
+            heroTag: 'qibla_compass_button',
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            tooltip: 'Qibla Compass',
+            child: const Icon(Icons.explore, color: Colors.white, size: 24),
+            onPressed: () async {
+              AnalyticsService().logQiblaOpened();
+              if (kIsWeb) {
+                await requestWebOrientationPermission();
+              }
+              _showCompassModal();
+            },
+          ),
+        ],
       ),
     );
   }
